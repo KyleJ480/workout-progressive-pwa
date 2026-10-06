@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0b0b0c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Progress" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+  <title>Progress</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow" id="dateLabel">TODAY</div>
+        <h1>Progress</h1>
+      </div>
+      <div class="top-actions">
+        <button class="icon-button" id="historyButton" aria-label="History" title="History">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2"/></svg>
+        </button>
+        <button class="icon-button" id="settingsButton" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.5V3h4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="segmented" aria-label="Workout">
+      <button data-workout="Push">Push</button>
+      <button data-workout="Pull">Pull</button>
+      <button data-workout="Legs">Legs</button>
+    </nav>
+
+    <main class="exercise-card">
+      <div class="exercise-meta">
+        <div>
+          <div class="eyebrow" id="exerciseCounter">1 OF 5</div>
+          <h2 id="exerciseName">Barbell Bench Press</h2>
+        </div>
+        <button class="mini-button" id="editExerciseButton">Adjust</button>
+      </div>
+
+      <section class="load-block">
+        <div class="load-main" id="loadMain">125 lb total</div>
+        <div class="load-sub" id="loadSub">25 + 10 + 5 lb / side</div>
+      </section>
+
+      <section class="target-row">
+        <span>Target</span>
+        <strong id="targetLabel">9 / 9 / 9</strong>
+      </section>
+
+      <section class="sets-grid" id="setsGrid">
+        <!-- Rendered by JS -->
+      </section>
+
+      <div class="previous-line" id="previousLine">Previous: 125 lb · 9 / 9 / 8</div>
+
+      <div class="card-footer">
+        <button class="nav-button" id="prevExerciseButton" aria-label="Previous exercise">
+          <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <button class="complete-button" id="completeButton">Save & Next</button>
+        <button class="nav-button" id="nextExerciseButton" aria-label="Next exercise">
+          <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+    </main>
+
+    <footer class="statusbar">
+      <span id="autosaveStatus"><span class="status-dot"></span>Saved on this iPhone</span>
+      <button id="undoButton" class="text-button" disabled>Undo last</button>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="modal-backdrop" id="modalBackdrop" hidden></div>
+
+  <section class="sheet" id="historySheet" aria-modal="true" role="dialog" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div><div class="eyebrow">LOG</div><h3>History</h3></div>
+      <button class="icon-button close-sheet" aria-label="Close">×</button>
+    </div>
+    <div class="sheet-scroll" id="historyList"></div>
+    <div class="sheet-actions">
+      <button class="secondary-button" id="exportCsvButton">Export CSV</button>
+    </div>
+  </section>
+
+  <section class="sheet" id="settingsSheet" aria-modal="true" role="dialog" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div><div class="eyebrow">APP</div><h3>Settings</h3></div>
+      <button class="icon-button close-sheet" aria-label="Close">×</button>
+    </div>
+    <div class="sheet-scroll settings-content">
+      <label class="field-label" for="ezBarWeight">EZ-bar weight</label>
+      <div class="field-with-unit"><input type="number" id="ezBarWeight" min="0" step="1" inputmode="decimal"><span>lb</span></div>
+      <p class="hint">Your EZ-bar total weight depends on this. The starter value is 25 lb; change it if your bar is different.</p>
+
+      <div class="settings-divider"></div>
+      <div class="settings-row"><div><strong>Auto-save</strong><span>Every tap is stored immediately on this device.</span></div><span class="check">✓</span></div>
+      <div class="settings-row"><div><strong>Offline mode</strong><span>Works after the first successful load.</span></div><span class="check">✓</span></div>
+
+      <div class="settings-divider"></div>
+      <button class="secondary-button full" id="exportBackupButton">Export backup</button>
+      <label class="secondary-button full file-label">Import backup<input type="file" id="importBackupInput" accept="application/json" hidden></label>
+      <button class="danger-button full" id="resetButton">Reset all app data</button>
+    </div>
+  </section>
+
+  <section class="sheet compact-sheet" id="adjustSheet" aria-modal="true" role="dialog" hidden>
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div><div class="eyebrow">EXERCISE</div><h3 id="adjustTitle">Adjust</h3></div>
+      <button class="icon-button close-sheet" aria-label="Close">×</button>
+    </div>
+    <div class="sheet-scroll settings-content">
+      <div id="weightAdjustFields"></div>
+      <div class="two-fields" id="repRangeFields">
+        <div><label class="field-label">Min reps</label><input type="number" id="minRepsInput" min="1" max="30" step="1" inputmode="numeric"></div>
+        <div><label class="field-label">Max reps</label><input type="number" id="maxRepsInput" min="1" max="30" step="1" inputmode="numeric"></div>
+      </div>
+      <p class="hint" id="adjustHint"></p>
+      <button class="primary-button full" id="saveAdjustButton">Use these settings</button>
+    </div>
+  </section>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
