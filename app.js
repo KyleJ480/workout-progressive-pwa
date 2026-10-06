@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = 'progress-workout-v1';
   const APP_VERSION = 1;
+  const DEFAULT_BACKFILL_UPDATES_TARGET = true;
   const PLATES = [45, 25, 10, 5, 2.5];
   const EXERCISE_IMAGES = {
     bench: 'barbell-bench-press.png',
@@ -56,6 +57,10 @@
   let state = loadState();
   let activeSheet = null;
   let toastTimer = null;
+  let insightsExerciseId = null;
+  let insightsMetric = 'load';
+  let editingPastRecordId = null;
+  let lastPastDate = '';
 
   const $ = id => document.getElementById(id);
   const els = {
@@ -64,6 +69,9 @@
     progressLabel: $('progressLabel'), progressSegments: $('progressSegments'), newSessionButton: $('newSessionButton'), exerciseLoggedBadge: $('exerciseLoggedBadge'),
     targetLabel: $('targetLabel'), setsGrid: $('setsGrid'), previousLine: $('previousLine'), completeButton: $('completeButton'),
     prevExerciseButton: $('prevExerciseButton'), nextExerciseButton: $('nextExerciseButton'), undoButton: $('undoButton'),
+    insightsButton: $('insightsButton'), insightsPage: $('insightsPage'), closeInsightsButton: $('closeInsightsButton'),
+    insightsExerciseSelect: $('insightsExerciseSelect'), insightsMetricLabel: $('insightsMetricLabel'), insightsLatestValue: $('insightsLatestValue'), insightsChange: $('insightsChange'), insightsMetrics: $('insightsMetrics'), insightsChart: $('insightsChart'), insightsFirstDate: $('insightsFirstDate'), insightsLastDate: $('insightsLastDate'), insightsChartNote: $('insightsChartNote'), insightsCount: $('insightsCount'), insightsBest: $('insightsBest'), insightsResultList: $('insightsResultList'), addPastResultButton: $('addPastResultButton'),
+    pastEntryForm: $('pastEntryForm'), pastEntryTitle: $('pastEntryTitle'), closePastEntryButton: $('closePastEntryButton'), pastEntryDate: $('pastEntryDate'), pastEntryExercise: $('pastEntryExercise'), pastEntryLoadRow: $('pastEntryLoadRow'), pastEntryLoadLabel: $('pastEntryLoadLabel'), pastEntryLoad: $('pastEntryLoad'), pastEntrySets: $('pastEntrySets'), pastEntrySet1: $('pastEntrySet1'), pastEntrySet2: $('pastEntrySet2'), pastEntrySet3: $('pastEntrySet3'), pastEntrySkiFields: $('pastEntrySkiFields'), pastEntrySetting: $('pastEntrySetting'), pastEntryPace: $('pastEntryPace'), pastEntryUseForTarget: $('pastEntryUseForTarget'), pastEntryHint: $('pastEntryHint'), savePastEntryButton: $('savePastEntryButton'), cancelPastEntryButton: $('cancelPastEntryButton'), deletePastEntryButton: $('deletePastEntryButton'),
     historyButton: $('historyButton'), settingsButton: $('settingsButton'), editExerciseButton: $('editExerciseButton'),
     modalBackdrop: $('modalBackdrop'), historySheet: $('historySheet'), settingsSheet: $('settingsSheet'), adjustSheet: $('adjustSheet'),
     historyList: $('historyList'), exportCsvButton: $('exportCsvButton'), ezBarWeight: $('ezBarWeight'), exportBackupButton: $('exportBackupButton'),
@@ -412,6 +420,7 @@
       if (ex.kind === 'bar') ex.sideWeight = Number(target.sideWeight);
       else ex.weight = Number(target.weight);
     }
+    ex.progressionRecordId = record.id;
     delete state.drafts[ex.id];
     state.undoRecord = before;
 
@@ -501,14 +510,13 @@
   }
 
   function renderHistory() {
-    const rows = state.history.slice().reverse();
+    const rows = state.history.slice().sort((a, b) => compareRecordDates(b, a));
     if (!rows.length) {
       els.historyList.innerHTML = '<div class="empty-state">No completed exercises yet.<br>Your first saved set will appear here.</div>';
       return;
     }
     els.historyList.innerHTML = rows.map(r => {
-      const dt = new Date(r.timestamp);
-      const date = dt.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      const date = shortDate(r);
       const sets = r.kind === 'timer' ? r.seconds.map(x => `${x}s`).join(' / ') : r.reps.join(' / ');
       let load = '';
       if (r.kind === 'bar') load = `${formatNumber(r.totalWeight)} lb`;
@@ -517,6 +525,279 @@
       else if (r.setting) load = `S${r.setting}`;
       return `<div class="history-item"><div><strong>${escapeHtml(r.exerciseName)}</strong><div class="history-sub">${date} · ${escapeHtml(r.workout)}</div></div><div class="history-value">${escapeHtml(load)}<div class="history-sub">${escapeHtml(sets)}</div></div></div>`;
     }).join('');
+  }
+
+  function exerciseSelectOptions() {
+    return ['Push', 'Pull', 'Legs'].map(workout => {
+      const options = Object.values(state.exercises)
+        .filter(ex => ex.workout === workout && EXERCISE_IMAGES[ex.id])
+        .map(ex => `<option value="${escapeHtml(ex.id)}">${escapeHtml(ex.name)}</option>`).join('');
+      return `<optgroup label="${workout}">${options}</optgroup>`;
+    }).join('');
+  }
+
+  function openInsights() {
+    closeSheet();
+    insightsExerciseId = currentExercise().id;
+    insightsMetric = 'load';
+    const options = exerciseSelectOptions();
+    els.insightsExerciseSelect.innerHTML = options;
+    els.pastEntryExercise.innerHTML = options;
+    els.insightsExerciseSelect.value = insightsExerciseId;
+    els.insightsPage.hidden = false;
+    renderInsights();
+    els.closeInsightsButton.focus();
+  }
+
+  function closeInsights() {
+    closePastEntry();
+    els.insightsPage.hidden = true;
+    els.insightsButton.focus();
+  }
+
+  function exerciseRecords(exerciseId) {
+    return state.history.filter(r => r.exerciseId === exerciseId && (r.workoutDate || Number.isFinite(Date.parse(r.timestamp))))
+      .sort(compareRecordDates);
+  }
+
+  function compareRecordDates(a, b) {
+    const aDay = a.workoutDate || localDateString(new Date(a.timestamp));
+    const bDay = b.workoutDate || localDateString(new Date(b.timestamp));
+    return aDay.localeCompare(bDay) || Date.parse(a.timestamp) - Date.parse(b.timestamp);
+  }
+
+  function chartValue(record, metric) {
+    if (metric === 'time') return Array.isArray(record.seconds) ? record.seconds.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
+    if (metric === 'reps') return Array.isArray(record.reps) ? record.reps.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
+    if (record.kind === 'bar') return record.totalWeight == null ? NaN : Number(record.totalWeight);
+    return record.weight == null ? NaN : Number(record.weight);
+  }
+
+  function metricUnit(ex, metric) {
+    if (metric === 'time') return 'sec';
+    if (metric === 'reps') return 'reps';
+    return ex.kind === 'bar' ? 'lb total' : ex.kind === 'db' ? 'lb each' : 'lb';
+  }
+
+  function shortDate(record) {
+    const [year, month, day] = record.workoutDate?.split('-').map(Number) || [];
+    const date = record.workoutDate ? new Date(year, month - 1, day) : new Date(record.timestamp);
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+  }
+
+  function renderInsights() {
+    const ex = state.exercises[insightsExerciseId];
+    if (!ex) return;
+    const timed = ex.kind === 'timer';
+    if (timed) insightsMetric = 'time';
+    else if (insightsMetric === 'time') insightsMetric = 'load';
+    els.insightsExerciseSelect.value = ex.id;
+    els.insightsMetrics.hidden = timed;
+    els.insightsMetrics.querySelectorAll('button').forEach(button => {
+      const active = button.dataset.metric === insightsMetric;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    const unit = metricUnit(ex, insightsMetric);
+    els.insightsMetricLabel.textContent = timed ? 'TOTAL TIME' : insightsMetric === 'reps' ? 'TOTAL REPS' : ex.kind === 'bar' ? 'TOTAL WEIGHT' : 'DUMBBELL WEIGHT';
+    const records = exerciseRecords(ex.id);
+    const points = records.map(record => ({ record, value: chartValue(record, insightsMetric) }))
+      .filter(point => Number.isFinite(point.value) && point.value >= 0);
+    els.insightsCount.textContent = String(records.length);
+    els.insightsChartNote.textContent = `Each point is a logged workout. Skipped days are not plotted.`;
+    if (!points.length) {
+      els.insightsLatestValue.textContent = '—';
+      els.insightsChange.textContent = 'No results yet';
+      els.insightsChange.classList.remove('down');
+      els.insightsBest.textContent = '—';
+      els.insightsChart.innerHTML = '<div class="empty-state">Save an exercise to start your chart.</div>';
+      els.insightsFirstDate.textContent = '';
+      els.insightsLastDate.textContent = '';
+    } else {
+      const first = points[0], last = points[points.length - 1];
+      const best = Math.max(...points.map(point => point.value));
+      const delta = last.value - first.value;
+      els.insightsLatestValue.textContent = `${formatNumber(last.value)} ${unit}`;
+      els.insightsBest.textContent = `${formatNumber(best)} ${unit}`;
+      els.insightsChange.textContent = points.length === 1 ? 'First result' : delta === 0 ? 'No change yet' : `${delta > 0 ? '+' : '−'}${formatNumber(Math.abs(delta))} ${unit}`;
+      els.insightsChange.classList.toggle('down', delta < 0);
+      els.insightsFirstDate.textContent = shortDate(first.record);
+      els.insightsLastDate.textContent = points.length > 1 ? shortDate(last.record) : '';
+      els.insightsChart.innerHTML = chartSvg(points, unit);
+    }
+    els.insightsResultList.innerHTML = records.length ? records.slice().reverse().map(record => {
+      const sets = record.kind === 'timer' ? (record.seconds || []).map(value => `${value}s`).join(' / ') : (record.reps || []).join(' / ');
+      const load = record.kind === 'bar' ? `${formatNumber(record.totalWeight)} lb total` : record.kind === 'db' ? `${formatNumber(record.weight)} lb each` : record.kind === 'dbSingle' ? `${formatNumber(record.weight)} lb` : record.setting != null ? `Setting ${record.setting}` : '';
+      const detail = [load, sets].filter(Boolean).join(' · ');
+      return `<div class="insights-result"><div><strong>${escapeHtml(shortDate(record))}</strong><span>${escapeHtml(detail)}</span></div>${record.backfilled ? `<button type="button" data-edit-past="${escapeHtml(record.id)}">Edit</button>` : ''}</div>`;
+    }).join('') : '<div class="empty-state">No results for this exercise yet.</div>';
+    els.insightsResultList.querySelectorAll('[data-edit-past]').forEach(button => button.addEventListener('click', () => openPastEntry(button.dataset.editPast)));
+  }
+
+  function chartSvg(points, unit) {
+    const values = points.map(point => point.value);
+    const low = Math.min(...values), high = Math.max(...values);
+    const padding = high === low ? Math.max(1, high * .05) : Math.max(1, (high - low) * .18);
+    const min = Math.max(0, low - padding), max = high + padding;
+    const x = index => points.length === 1 ? 176 : 40 + (index * 272 / (points.length - 1));
+    const y = value => 148 - ((value - min) / (max - min)) * 120;
+    const path = points.map((point, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ');
+    const fill = points.length > 1 ? `<path class="chart-fill" d="${path} L${x(points.length - 1).toFixed(1)},148 L${x(0).toFixed(1)},148 Z"/>` : '';
+    const grids = [0, .5, 1].map(fraction => {
+      const yy = 148 - fraction * 120;
+      const value = min + fraction * (max - min);
+      return `<line class="chart-grid" x1="40" x2="312" y1="${yy}" y2="${yy}"/><text class="chart-axis-value" x="0" y="${yy + 3}">${formatNumber(Math.round(value))}</text>`;
+    }).join('');
+    const dots = points.map((point, index) => `<circle class="chart-point${index === points.length - 1 ? ' chart-point-last' : ''}" cx="${x(index).toFixed(1)}" cy="${y(point.value).toFixed(1)}" r="${index === points.length - 1 ? 5 : 3.5}"><title>${escapeHtml(shortDate(point.record))}: ${formatNumber(point.value)} ${escapeHtml(unit)}</title></circle>`).join('');
+    return `<svg viewBox="0 0 320 180" role="img" aria-label="${escapeHtml(unit)} across ${points.length} logged workouts">${grids}${fill}<path class="chart-line" d="${path}"/>${dots}</svg>`;
+  }
+
+  function localDateString(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function timestampForDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+    return localDateString(date) === value ? date.toISOString() : null;
+  }
+
+  function openPastEntry(recordId = null) {
+    const record = recordId ? state.history.find(item => item.id === recordId && item.backfilled) : null;
+    editingPastRecordId = record?.id || null;
+    els.pastEntryForm.reset();
+    els.pastEntryTitle.textContent = record ? 'Edit past result' : 'Add past result';
+    els.savePastEntryButton.textContent = record ? 'Update result' : 'Save result';
+    els.deletePastEntryButton.hidden = !record;
+    els.pastEntryDate.max = localDateString(new Date());
+    els.pastEntryDate.value = record ? (record.workoutDate || localDateString(new Date(record.timestamp))) : lastPastDate;
+    els.pastEntryExercise.value = record?.exerciseId || insightsExerciseId;
+    els.pastEntryExercise.disabled = !!record;
+    els.pastEntryUseForTarget.checked = record ? !!record.affectsProgression : DEFAULT_BACKFILL_UPDATES_TARGET;
+    renderPastEntryFields(record);
+    els.pastEntryForm.hidden = false;
+    els.pastEntryForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function closePastEntry() {
+    els.pastEntryForm.hidden = true;
+    editingPastRecordId = null;
+  }
+
+  function renderPastEntryFields(record = null) {
+    const ex = state.exercises[els.pastEntryExercise.value];
+    if (!ex) return;
+    const timed = ex.kind === 'timer';
+    els.pastEntryLoadRow.hidden = timed;
+    els.pastEntryLoad.required = !timed;
+    els.pastEntryLoadLabel.textContent = ex.kind === 'bar' ? 'Total weight, including the bar' : ex.kind === 'db' ? 'Weight of each dumbbell' : 'Dumbbell weight';
+    els.pastEntryLoad.min = ex.kind === 'bar' ? String(barWeight(ex)) : '0';
+    els.pastEntryLoad.value = !record || timed ? '' : String(ex.kind === 'bar' ? record.totalWeight : record.weight);
+    els.pastEntrySets.querySelectorAll('label').forEach((label, index) => { label.textContent = `Set ${index + 1} ${timed ? '(seconds)' : '(reps)'}`; });
+    const values = record ? (timed ? record.seconds : record.reps) : null;
+    [els.pastEntrySet1, els.pastEntrySet2, els.pastEntrySet3].forEach((input, index) => { input.value = values?.[index] ?? ''; });
+    els.pastEntrySkiFields.hidden = ex.id !== 'ski';
+    els.pastEntrySetting.value = ex.id === 'ski' ? (record?.setting ?? '') : '';
+    els.pastEntryPace.value = ex.id === 'ski' ? (record?.pace ?? '') : '';
+    els.pastEntryHint.textContent = 'The date you choose appears on the chart. Only a result newer than your other logs can change your next target.';
+  }
+
+  function progressionSnapshot(ex) {
+    return { last: ex.last?.slice(), seconds: ex.seconds?.slice(), weight: ex.weight, sideWeight: ex.sideWeight, progressionRecordId: ex.progressionRecordId || null };
+  }
+
+  function applyProgressionRecord(ex, record) {
+    const values = ex.kind === 'timer' ? record.seconds : record.reps;
+    if (!Array.isArray(values) || values.length !== 3) return;
+    ex.last = values.map(Number);
+    if (ex.kind === 'timer') ex.seconds = ex.last.slice();
+    else if (ex.kind === 'bar') ex.sideWeight = Number(record.sideWeight);
+    else ex.weight = Number(record.weight);
+    ex.progressionRecordId = record.id;
+  }
+
+  function reconcilePastProgression(ex, changedId, previousRecord) {
+    const wasSource = ex.progressionRecordId === changedId;
+    const records = exerciseRecords(ex.id);
+    const eligible = records.filter(record => !record.backfilled || record.affectsProgression);
+    const latest = eligible[eligible.length - 1];
+    const latestOverall = records[records.length - 1];
+    const replacement = latest?.id === changedId && latestOverall?.id !== changedId ? eligible.filter(record => record.id !== changedId).slice(-1)[0] : latest;
+    if (wasSource && replacement) applyProgressionRecord(ex, replacement);
+    else if (wasSource) {
+      const snapshot = previousRecord?.priorProgression || progressionSnapshot(defaultState().exercises[ex.id]);
+      ex.last = snapshot.last?.slice();
+      if (ex.kind === 'timer') ex.seconds = snapshot.seconds?.slice();
+      else if (ex.kind === 'bar') ex.sideWeight = snapshot.sideWeight;
+      else ex.weight = snapshot.weight;
+      ex.progressionRecordId = snapshot.progressionRecordId;
+    } else if (latest?.id === changedId && latestOverall?.id === changedId) applyProgressionRecord(ex, latest);
+  }
+
+  function savePastEntry(event) {
+    event.preventDefault();
+    const ex = state.exercises[els.pastEntryExercise.value];
+    const dateValue = els.pastEntryDate.value;
+    const timestamp = timestampForDate(dateValue);
+    if (!ex || !EXERCISE_IMAGES[ex.id] || !timestamp || dateValue > localDateString(new Date())) { showToast('Choose a valid past date'); return; }
+    const setInputs = [els.pastEntrySet1, els.pastEntrySet2, els.pastEntrySet3];
+    const values = setInputs.map(input => Number(input.value));
+    if (setInputs.some(input => input.value === '') || values.some(value => !Number.isInteger(value) || value < 0)) { showToast('Enter all three sets'); return; }
+    const timed = ex.kind === 'timer';
+    const load = timed ? null : Number(els.pastEntryLoad.value);
+    if (!timed && (!Number.isFinite(load) || load <= 0 || (ex.kind === 'bar' && load < barWeight(ex)))) { showToast('Check the weight'); return; }
+    const existingIndex = editingPastRecordId ? state.history.findIndex(record => record.id === editingPastRecordId && record.backfilled) : -1;
+    const previousRecord = existingIndex >= 0 ? state.history[existingIndex] : null;
+    const record = {
+      id: previousRecord?.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      timestamp,
+      workoutDate: dateValue,
+      sessionId: previousRecord?.sessionId || `past-${dateValue}`,
+      workout: ex.workout,
+      exerciseId: ex.id,
+      exerciseName: ex.name,
+      kind: ex.kind,
+      targetValues: previousRecord?.targetValues || values.slice(),
+      previousText: previousRecord?.previousText || '',
+      reps: timed ? null : values.slice(),
+      seconds: timed ? values.slice() : null,
+      weight: ex.kind.startsWith('db') ? load : null,
+      sideWeight: ex.kind === 'bar' ? (load - barWeight(ex)) / 2 : null,
+      totalWeight: ex.kind === 'bar' ? load : null,
+      barWeight: ex.kind === 'bar' ? barWeight(ex) : null,
+      setting: ex.id === 'ski' && els.pastEntrySetting.value !== '' ? Number(els.pastEntrySetting.value) : null,
+      pace: ex.id === 'ski' && els.pastEntryPace.value !== '' ? Number(els.pastEntryPace.value) : null,
+      backfilled: true,
+      affectsProgression: els.pastEntryUseForTarget.checked,
+      priorProgression: previousRecord?.priorProgression || progressionSnapshot(ex)
+    };
+    if (existingIndex >= 0) state.history[existingIndex] = record;
+    else state.history.push(record);
+    reconcilePastProgression(ex, record.id, previousRecord);
+    state.undoRecord = null;
+    lastPastDate = dateValue;
+    insightsExerciseId = ex.id;
+    saveState();
+    closePastEntry();
+    render();
+    renderInsights();
+    showToast(previousRecord ? 'Past result updated' : 'Past result added');
+  }
+
+  function deletePastEntry() {
+    const index = state.history.findIndex(record => record.id === editingPastRecordId && record.backfilled);
+    if (index < 0 || !confirm('Delete this past result? This cannot be undone.')) return;
+    const record = state.history[index];
+    const ex = state.exercises[record.exerciseId];
+    state.history.splice(index, 1);
+    reconcilePastProgression(ex, record.id, record);
+    state.undoRecord = null;
+    saveState();
+    closePastEntry();
+    render();
+    renderInsights();
+    showToast('Past result deleted');
   }
 
   function openAdjust() {
@@ -588,9 +869,9 @@
 
   function exportCsv() {
     const headers = ['Date','Workout','Exercise','Type','Total Weight','Dumbbell Weight','Plate Weight Per Side','Set 1','Set 2','Set 3','Setting','Pace'];
-    const rows = state.history.map(r => {
+    const rows = state.history.slice().sort(compareRecordDates).map(r => {
       const vals = r.kind === 'timer' ? r.seconds : r.reps;
-      return [new Date(r.timestamp).toLocaleString(), r.workout, r.exerciseName, r.kind, r.totalWeight ?? '', r.weight ?? '', r.sideWeight ?? '', vals?.[0] ?? '', vals?.[1] ?? '', vals?.[2] ?? '', r.setting ?? '', r.pace ?? ''];
+      return [r.workoutDate || new Date(r.timestamp).toLocaleString(), r.workout, r.exerciseName, r.kind, r.totalWeight ?? '', r.weight ?? '', r.sideWeight ?? '', vals?.[0] ?? '', vals?.[1] ?? '', vals?.[2] ?? '', r.setting ?? '', r.pace ?? ''];
     });
     const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
     downloadFile(`progress-history-${isoDate()}.csv`, csv, 'text/csv');
@@ -631,6 +912,16 @@
   els.nextSessionButton.addEventListener('click', startNextSession);
   els.reviewWorkoutButton.addEventListener('click', closeCelebration);
   els.undoButton.addEventListener('click', undoLast);
+  els.insightsButton.addEventListener('click', openInsights);
+  els.closeInsightsButton.addEventListener('click', closeInsights);
+  els.insightsExerciseSelect.addEventListener('change', () => { insightsExerciseId = els.insightsExerciseSelect.value; closePastEntry(); renderInsights(); });
+  els.insightsMetrics.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { insightsMetric = button.dataset.metric; renderInsights(); }));
+  els.addPastResultButton.addEventListener('click', () => openPastEntry());
+  els.pastEntryExercise.addEventListener('change', () => renderPastEntryFields());
+  els.pastEntryForm.addEventListener('submit', savePastEntry);
+  els.closePastEntryButton.addEventListener('click', closePastEntry);
+  els.cancelPastEntryButton.addEventListener('click', closePastEntry);
+  els.deletePastEntryButton.addEventListener('click', deletePastEntry);
   els.historyButton.addEventListener('click', () => openSheet(els.historySheet));
   els.settingsButton.addEventListener('click', () => openSheet(els.settingsSheet));
   els.editExerciseButton.addEventListener('click', openAdjust);
@@ -646,8 +937,12 @@
   els.resetButton.addEventListener('click', resetAll);
   els.saveAdjustButton.addEventListener('click', saveAdjust);
   window.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !els.exerciseImageOverlay.hidden) closeExerciseImage();
-    else if (event.key === 'Escape' && !els.completionOverlay.hidden) closeCelebration();
+    if (event.key !== 'Escape') return;
+    if (!els.exerciseImageOverlay.hidden) closeExerciseImage();
+    else if (!els.completionOverlay.hidden) closeCelebration();
+    else if (activeSheet) closeSheet();
+    else if (!els.pastEntryForm.hidden) closePastEntry();
+    else if (!els.insightsPage.hidden) closeInsights();
   });
   window.addEventListener('resize', fitExerciseTitle);
   window.addEventListener('beforeunload', saveState);

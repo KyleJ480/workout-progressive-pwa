@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=4" />
+  <link rel="stylesheet" href="./styles.css?v=5" />
   <title>Progress</title>
 </head>
 <body>
@@ -21,6 +21,9 @@
         <h1>Progress</h1>
       </div>
       <div class="top-actions">
+        <button class="icon-button" id="insightsButton" aria-label="Progress charts" title="Progress charts">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18.5h18M5 15l5-5 4 3 5-7"/><path d="M17 6h2v2"/></svg>
+        </button>
         <button class="icon-button" id="historyButton" aria-label="History" title="History">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2"/></svg>
         </button>
@@ -86,6 +89,59 @@
       <button id="undoButton" class="text-button" disabled>Undo last</button>
     </footer>
   </div>
+
+  <section class="insights-page" id="insightsPage" aria-labelledby="insightsTitle" hidden>
+    <header class="insights-topbar">
+      <button class="insights-back" id="closeInsightsButton" type="button" aria-label="Back to workout">‹ <span>Workout</span></button>
+      <strong id="insightsTitle">Progress</strong>
+      <span class="insights-topbar-spacer" aria-hidden="true"></span>
+    </header>
+    <div class="insights-content">
+      <div class="insights-intro"><div class="eyebrow">YOUR RESULTS</div><h2>See your progress</h2><p>Each saved exercise is one point. Days off are skipped.</p></div>
+      <label class="field-label" for="insightsExerciseSelect">Exercise</label>
+      <select id="insightsExerciseSelect" class="insights-select"></select>
+
+      <section class="insights-chart-card" aria-label="Exercise chart">
+        <div class="insights-chart-heading"><div><div class="eyebrow" id="insightsMetricLabel">Weight</div><strong id="insightsLatestValue">—</strong></div><span id="insightsChange">No results yet</span></div>
+        <div class="insights-metrics" id="insightsMetrics" aria-label="Chart metric">
+          <button type="button" data-metric="load" class="active">Weight</button>
+          <button type="button" data-metric="reps">Total reps</button>
+        </div>
+        <div class="insights-chart" id="insightsChart"></div>
+        <div class="insights-chart-dates"><span id="insightsFirstDate"></span><span id="insightsLastDate"></span></div>
+        <div class="insights-chart-note" id="insightsChartNote">Connects logged workouts only.</div>
+      </section>
+
+      <div class="insights-stats"><div><span>RESULTS</span><strong id="insightsCount">0</strong></div><div><span>BEST</span><strong id="insightsBest">—</strong></div></div>
+
+      <section class="insights-results" aria-label="Exercise results">
+        <div class="insights-results-heading"><h2>Results</h2><button type="button" id="addPastResultButton">+ Add past result</button></div>
+        <div id="insightsResultList"></div>
+      </section>
+
+      <form class="past-entry-panel" id="pastEntryForm" hidden>
+        <div class="past-entry-heading"><h2 id="pastEntryTitle">Add past result</h2><button type="button" class="icon-button" id="closePastEntryButton" aria-label="Close form">×</button></div>
+        <div class="past-entry-grid">
+          <div><label class="field-label" for="pastEntryDate">Date</label><input id="pastEntryDate" type="date" required /></div>
+          <div><label class="field-label" for="pastEntryExercise">Exercise</label><select id="pastEntryExercise" class="insights-select"></select></div>
+        </div>
+        <div id="pastEntryLoadRow"><label class="field-label" for="pastEntryLoad" id="pastEntryLoadLabel">Weight</label><div class="field-with-unit"><input id="pastEntryLoad" type="number" min="0" step="any" inputmode="decimal" /><span>lb</span></div></div>
+        <div class="past-entry-sets" id="pastEntrySets">
+          <div><label class="field-label" for="pastEntrySet1">Set 1</label><input id="pastEntrySet1" type="number" min="0" step="1" inputmode="numeric" required /></div>
+          <div><label class="field-label" for="pastEntrySet2">Set 2</label><input id="pastEntrySet2" type="number" min="0" step="1" inputmode="numeric" required /></div>
+          <div><label class="field-label" for="pastEntrySet3">Set 3</label><input id="pastEntrySet3" type="number" min="0" step="1" inputmode="numeric" required /></div>
+        </div>
+        <div class="past-entry-grid" id="pastEntrySkiFields" hidden>
+          <div><label class="field-label" for="pastEntrySetting">Ski setting</label><input id="pastEntrySetting" type="number" min="0" step="1" inputmode="numeric" /></div>
+          <div><label class="field-label" for="pastEntryPace">Calories/hour</label><input id="pastEntryPace" type="number" min="0" step="1" inputmode="numeric" /></div>
+        </div>
+        <label class="past-entry-option"><input id="pastEntryUseForTarget" type="checkbox" checked /><span>Use this result for my next target if it is my latest one</span></label>
+        <p class="hint" id="pastEntryHint">Your entry will appear on the date you choose.</p>
+        <div class="past-entry-actions"><button class="primary-button" type="submit" id="savePastEntryButton">Save result</button><button class="secondary-button" type="button" id="cancelPastEntryButton">Cancel</button></div>
+        <button type="button" class="past-entry-delete" id="deletePastEntryButton" hidden>Delete this result</button>
+      </form>
+    </div>
+  </section>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -164,6 +220,6 @@
     </div>
   </section>
 
-  <script src="./app.js?v=4" defer></script>
+  <script src="./app.js?v=5" defer></script>
 </body>
 </html>

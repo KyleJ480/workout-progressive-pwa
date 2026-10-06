@@ -14,6 +14,8 @@ A small, dependency-free progressive-overload PWA designed for iPhone.
 - Every rep change and every completed exercise is written to local storage immediately.
 - A workout progress bar tracks logged exercises, and completed exercises can be reviewed and updated without duplicating their history entries.
 - Each exercise has an illustration beside its counter; tap it to view a larger reference image.
+- The chart icon opens a separate Progress view for weight, total reps, or timed-set progress. The line connects logged workouts; skipped days create no point.
+- Add or edit a past exercise result with its actual date. You can choose whether a latest backfilled result updates the next workout target.
 - Finishing the last exercise keeps the completed workout in view until you explicitly start the next session.
 - PWA/service worker support allows the app to run offline after the first successful load.
 - Export/import a JSON backup and export workout history as CSV.
