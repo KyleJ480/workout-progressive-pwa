@@ -59,6 +59,7 @@
   let toastTimer = null;
   let insightsExerciseId = null;
   let insightsMetric = 'load';
+  let consistencyRange = '30';
   let editingPastRecordId = null;
   let lastPastDate = '';
 
@@ -70,6 +71,7 @@
     targetLabel: $('targetLabel'), setsGrid: $('setsGrid'), previousLine: $('previousLine'), completeButton: $('completeButton'),
     prevExerciseButton: $('prevExerciseButton'), nextExerciseButton: $('nextExerciseButton'), undoButton: $('undoButton'),
     insightsButton: $('insightsButton'), insightsPage: $('insightsPage'), closeInsightsButton: $('closeInsightsButton'),
+    exerciseInsightsView: $('exerciseInsightsView'), consistencyView: $('consistencyView'), consistencyPercent: $('consistencyPercent'), consistencySummary: $('consistencySummary'), consistencyTrack: $('consistencyTrack'), consistencyFill: $('consistencyFill'), consistencyGoal: $('consistencyGoal'), consistencyVisualTitle: $('consistencyVisualTitle'), consistencyVisualCount: $('consistencyVisualCount'), consistencyChart: $('consistencyChart'),
     insightsExerciseSelect: $('insightsExerciseSelect'), insightsMetricLabel: $('insightsMetricLabel'), insightsLatestValue: $('insightsLatestValue'), insightsChange: $('insightsChange'), insightsMetrics: $('insightsMetrics'), insightsChart: $('insightsChart'), insightsFirstDate: $('insightsFirstDate'), insightsLastDate: $('insightsLastDate'), insightsChartNote: $('insightsChartNote'), insightsCount: $('insightsCount'), insightsBest: $('insightsBest'), insightsResultList: $('insightsResultList'), addPastResultButton: $('addPastResultButton'),
     pastEntryForm: $('pastEntryForm'), pastEntryTitle: $('pastEntryTitle'), closePastEntryButton: $('closePastEntryButton'), pastEntryDate: $('pastEntryDate'), pastEntryExercise: $('pastEntryExercise'), pastEntryLoadRow: $('pastEntryLoadRow'), pastEntryLoadLabel: $('pastEntryLoadLabel'), pastEntryLoad: $('pastEntryLoad'), pastEntrySets: $('pastEntrySets'), pastEntrySet1: $('pastEntrySet1'), pastEntrySet2: $('pastEntrySet2'), pastEntrySet3: $('pastEntrySet3'), pastEntrySkiFields: $('pastEntrySkiFields'), pastEntrySetting: $('pastEntrySetting'), pastEntryPace: $('pastEntryPace'), pastEntryUseForTarget: $('pastEntryUseForTarget'), pastEntryHint: $('pastEntryHint'), savePastEntryButton: $('savePastEntryButton'), cancelPastEntryButton: $('cancelPastEntryButton'), deletePastEntryButton: $('deletePastEntryButton'),
     historyButton: $('historyButton'), settingsButton: $('settingsButton'), editExerciseButton: $('editExerciseButton'),
@@ -391,6 +393,7 @@
     const record = {
       id: saved?.id || `${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       timestamp: saved?.timestamp || new Date().toISOString(),
+      workoutDate: saved?.workoutDate || (saved?.timestamp ? localDateString(new Date(saved.timestamp)) : localDateString(new Date())),
       sessionId: session.id,
       workout: state.selectedWorkout,
       exerciseId: ex.id,
@@ -545,6 +548,8 @@
     els.pastEntryExercise.innerHTML = options;
     els.insightsExerciseSelect.value = insightsExerciseId;
     els.insightsPage.hidden = false;
+    consistencyRange = '30';
+    setInsightsView('exercise');
     renderInsights();
     els.closeInsightsButton.focus();
   }
@@ -553,6 +558,20 @@
     closePastEntry();
     els.insightsPage.hidden = true;
     els.insightsButton.focus();
+  }
+
+  function setInsightsView(view) {
+    const consistency = view === 'consistency';
+    if (consistency) closePastEntry();
+    els.exerciseInsightsView.hidden = consistency;
+    els.consistencyView.hidden = !consistency;
+    document.querySelectorAll('[data-insights-view]').forEach(button => {
+      const active = button.dataset.insightsView === view;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    els.insightsPage.scrollTop = 0;
+    if (consistency) renderConsistency();
   }
 
   function exerciseRecords(exerciseId) {
@@ -655,6 +674,80 @@
 
   function localDateString(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function dateOrdinal(key) {
+    const [year, month, day] = key.split('-').map(Number);
+    return Date.UTC(year, month - 1, day) / 86400000;
+  }
+
+  function loggedDayKeys(todayKey) {
+    const days = new Set();
+    state.history.forEach(record => {
+      let key = record.workoutDate;
+      if (!key || !timestampForDate(key)) {
+        const date = new Date(record.timestamp);
+        if (!Number.isFinite(date.getTime())) return;
+        key = localDateString(date);
+      }
+      if (key <= todayKey) days.add(key);
+    });
+    return days;
+  }
+
+  function renderConsistency() {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const todayKey = localDateString(today);
+    const days = loggedDayKeys(todayKey);
+    const firstDay = days.size ? [...days].sort()[0] : null;
+    const start = consistencyRange === '30'
+      ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29, 12)
+      : new Date(today.getFullYear(), today.getMonth() - 11, 1, 12);
+    const startKey = localDateString(start);
+    const trackedStart = firstDay && firstDay > startKey ? firstDay : startKey;
+    const trackedDays = firstDay ? dateOrdinal(todayKey) - dateOrdinal(trackedStart) + 1 : 0;
+    const trainedDays = [...days].filter(key => key >= trackedStart).length;
+    const rate = trackedDays ? Math.round(trainedDays / trackedDays * 100) : 0;
+    const targetDays = Math.ceil(trackedDays * 6 / 7);
+    els.consistencyPercent.textContent = trackedDays ? `${rate}%` : '—';
+    els.consistencySummary.textContent = trackedDays ? `${trainedDays} of ${trackedDays} days trained` : 'Log a workout to start tracking.';
+    els.consistencyFill.style.width = `${rate}%`;
+    els.consistencyTrack.setAttribute('aria-valuenow', String(rate));
+    els.consistencyGoal.textContent = trackedDays ? `6-day weekly goal ≈ ${targetDays} days here · white mark = 86%` : 'Your first logged day starts the tracking period.';
+    document.querySelectorAll('[data-consistency-range]').forEach(button => {
+      const active = button.dataset.consistencyRange === consistencyRange;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    els.consistencyVisualTitle.textContent = consistencyRange === '30' ? 'Last 30 days' : 'Past 12 months';
+    els.consistencyVisualCount.textContent = trackedDays ? `${trainedDays} training ${trainedDays === 1 ? 'day' : 'days'}` : 'No logs yet';
+    if (consistencyRange === '30') {
+      const headings = ['M','T','W','T','F','S','S'].map(day => `<span>${day}</span>`).join('');
+      const blanks = '<span class="consistency-day-spacer" aria-hidden="true"></span>'.repeat((start.getDay() + 6) % 7);
+      const cells = Array.from({ length: 30 }, (_, index) => {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12);
+        const key = localDateString(date);
+        const status = !firstDay || key < firstDay ? 'untracked' : days.has(key) ? 'trained' : 'rested';
+        const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        const detail = status === 'trained' ? 'trained' : status === 'rested' ? 'no log' : 'before first log';
+        return `<span class="consistency-day ${status}" aria-label="${escapeHtml(label)}: ${detail}" title="${escapeHtml(label)}: ${detail}">${date.getDate()}</span>`;
+      }).join('');
+      els.consistencyChart.innerHTML = `<div class="consistency-day-labels" aria-hidden="true">${headings}</div><div class="consistency-days">${blanks}${cells}</div>`;
+    } else {
+      const months = Array.from({ length: 12 }, (_, index) => {
+        const month = new Date(today.getFullYear(), today.getMonth() - 11 + index, 1, 12);
+        const monthStart = localDateString(month);
+        const monthEnd = index === 11 ? todayKey : localDateString(new Date(month.getFullYear(), month.getMonth() + 1, 0, 12));
+        const measuredStart = firstDay && firstDay > monthStart ? firstDay : monthStart;
+        const measuredDays = firstDay && measuredStart <= monthEnd ? dateOrdinal(monthEnd) - dateOrdinal(measuredStart) + 1 : 0;
+        const count = [...days].filter(key => key >= measuredStart && key <= monthEnd).length;
+        const percent = measuredDays ? Math.round(count / measuredDays * 100) : 0;
+        const label = month.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+        return `<div class="consistency-month${measuredDays ? '' : ' untracked'}" aria-label="${escapeHtml(label)}: ${measuredDays ? `${count} of ${measuredDays} days trained, ${percent}%` : 'before first log'}" title="${escapeHtml(label)}: ${measuredDays ? `${count} of ${measuredDays} days trained` : 'before first log'}"><div class="consistency-month-track"><span class="consistency-month-fill" style="height:${percent}%"></span></div><span class="consistency-month-label">${escapeHtml(month.toLocaleDateString(undefined, { month: 'short' }))}</span></div>`;
+      }).join('');
+      els.consistencyChart.innerHTML = `<div class="consistency-months">${months}</div>`;
+    }
   }
 
   function timestampForDate(value) {
@@ -783,6 +876,7 @@
     closePastEntry();
     render();
     renderInsights();
+    renderConsistency();
     showToast(previousRecord ? 'Past result updated' : 'Past result added');
   }
 
@@ -798,6 +892,7 @@
     closePastEntry();
     render();
     renderInsights();
+    renderConsistency();
     showToast('Past result deleted');
   }
 
@@ -915,6 +1010,8 @@
   els.undoButton.addEventListener('click', undoLast);
   els.insightsButton.addEventListener('click', openInsights);
   els.closeInsightsButton.addEventListener('click', closeInsights);
+  document.querySelectorAll('[data-insights-view]').forEach(button => button.addEventListener('click', () => setInsightsView(button.dataset.insightsView)));
+  document.querySelectorAll('[data-consistency-range]').forEach(button => button.addEventListener('click', () => { consistencyRange = button.dataset.consistencyRange; renderConsistency(); }));
   els.insightsExerciseSelect.addEventListener('change', () => { insightsExerciseId = els.insightsExerciseSelect.value; closePastEntry(); renderInsights(); });
   els.insightsMetrics.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { insightsMetric = button.dataset.metric; renderInsights(); }));
   els.insightsChart.addEventListener('click', event => { if (event.target.closest('[data-add-past]')) openPastEntry(); });
