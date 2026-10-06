@@ -12,6 +12,8 @@ A small, dependency-free progressive-overload PWA designed for iPhone.
 - The reverse-fly / EZ-bar-shrug slot alternates each completed Pull session.
 - Ski machine and planks are manual time-based progressions.
 - Every rep change and every completed exercise is written to local storage immediately.
+- A workout progress bar tracks logged exercises, and completed exercises can be reviewed and updated without duplicating their history entries.
+- Finishing the last exercise keeps the completed workout in view until you explicitly start the next session.
 - PWA/service worker support allows the app to run offline after the first successful load.
 - Export/import a JSON backup and export workout history as CSV.
 

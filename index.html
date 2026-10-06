@@ -36,10 +36,18 @@
       <button data-workout="Legs">Legs</button>
     </nav>
 
+    <section class="workout-progress" aria-label="Workout progress">
+      <div class="progress-heading">
+        <span id="progressLabel">0 of 5 complete</span>
+        <button class="progress-action" id="newSessionButton" hidden>Start next session</button>
+      </div>
+      <div class="progress-segments" id="progressSegments" role="progressbar" aria-label="Exercises completed" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"></div>
+    </section>
+
     <main class="exercise-card">
       <div class="exercise-meta">
         <div>
-          <div class="eyebrow" id="exerciseCounter">1 OF 5</div>
+          <div class="exercise-kicker"><div class="eyebrow" id="exerciseCounter">1 OF 5</div><span class="logged-badge" id="exerciseLoggedBadge" hidden>✓ LOGGED</span></div>
           <h2 id="exerciseName">Barbell Bench Press</h2>
         </div>
         <button class="mini-button" id="editExerciseButton">Adjust</button>
@@ -79,6 +87,18 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <section class="completion-overlay" id="completionOverlay" role="dialog" aria-modal="true" aria-labelledby="celebrationTitle" hidden>
+    <div class="celebration-sparks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="celebration-card">
+      <div class="celebration-check" aria-hidden="true">✓</div>
+      <div class="eyebrow">NICE WORK</div>
+      <h3 id="celebrationTitle">Workout complete!</h3>
+      <p id="celebrationDetail">All exercises logged.</p>
+      <button class="primary-button full" id="reviewWorkoutButton">Review workout</button>
+      <button class="text-button celebration-next" id="nextSessionButton">Start next session</button>
+    </div>
+  </section>
 
   <div class="modal-backdrop" id="modalBackdrop" hidden></div>
 

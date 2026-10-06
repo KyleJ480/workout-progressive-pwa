@@ -11,6 +11,7 @@
     selectedWorkout: suggestedWorkout(),
     currentIndices: { Push: 0, Pull: 0, Legs: 0 },
     sessionCounts: { Push: 0, Pull: 0, Legs: 0 },
+    activeSessions: {},
     drafts: {},
     history: [],
     undoRecord: null,
@@ -42,6 +43,7 @@
   const $ = id => document.getElementById(id);
   const els = {
     dateLabel: $('dateLabel'), exerciseCounter: $('exerciseCounter'), exerciseName: $('exerciseName'), loadMain: $('loadMain'), loadSub: $('loadSub'),
+    progressLabel: $('progressLabel'), progressSegments: $('progressSegments'), newSessionButton: $('newSessionButton'), exerciseLoggedBadge: $('exerciseLoggedBadge'),
     targetLabel: $('targetLabel'), setsGrid: $('setsGrid'), previousLine: $('previousLine'), completeButton: $('completeButton'),
     prevExerciseButton: $('prevExerciseButton'), nextExerciseButton: $('nextExerciseButton'), undoButton: $('undoButton'),
     historyButton: $('historyButton'), settingsButton: $('settingsButton'), editExerciseButton: $('editExerciseButton'),
@@ -49,7 +51,8 @@
     historyList: $('historyList'), exportCsvButton: $('exportCsvButton'), ezBarWeight: $('ezBarWeight'), exportBackupButton: $('exportBackupButton'),
     importBackupInput: $('importBackupInput'), resetButton: $('resetButton'), adjustTitle: $('adjustTitle'), weightAdjustFields: $('weightAdjustFields'),
     repRangeFields: $('repRangeFields'), minRepsInput: $('minRepsInput'), maxRepsInput: $('maxRepsInput'), adjustHint: $('adjustHint'),
-    saveAdjustButton: $('saveAdjustButton'), toast: $('toast')
+    saveAdjustButton: $('saveAdjustButton'), toast: $('toast'), completionOverlay: $('completionOverlay'), celebrationTitle: $('celebrationTitle'),
+    celebrationDetail: $('celebrationDetail'), reviewWorkoutButton: $('reviewWorkoutButton'), nextSessionButton: $('nextSessionButton')
   };
 
   function suggestedWorkout() {
@@ -72,8 +75,10 @@
         settings: { ...base.settings, ...(parsed.settings || {}) },
         currentIndices: { ...base.currentIndices, ...(parsed.currentIndices || {}) },
         sessionCounts: { ...base.sessionCounts, ...(parsed.sessionCounts || {}) },
+        activeSessions: parsed.activeSessions || {},
         drafts: parsed.drafts || {},
         history: Array.isArray(parsed.history) ? parsed.history : [],
+        undoRecord: parsed.undoRecord?.exerciseId ? parsed.undoRecord : null,
         exercises: { ...base.exercises, ...(parsed.exercises || {}) }
       };
     } catch (e) {
@@ -86,11 +91,40 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }
 
-  function getWorkoutIds(workout) {
+  function plannedWorkoutIds(workout) {
     if (workout === 'Push') return ['bench','ezOHP','inclineDB','shoulderFly','ski'];
     if (workout === 'Legs') return ['rdl','lunges','calf','planks'];
     const alt = state.sessionCounts.Pull % 2 === 0 ? 'reverseFly' : 'ezShrug';
     return ['singleArmRow','pullover','ezRow',alt,'curls'];
+  }
+
+  function getWorkoutIds(workout) {
+    return state.activeSessions[workout]?.ids || plannedWorkoutIds(workout);
+  }
+
+  function ensureSession(workout) {
+    if (!state.activeSessions[workout]) {
+      state.activeSessions[workout] = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        ids: plannedWorkoutIds(workout),
+        completed: {},
+        finishedAt: null
+      };
+    }
+    return state.activeSessions[workout];
+  }
+
+  function savedRecordFor(ex) {
+    const recordId = state.activeSessions[ex.workout]?.completed?.[ex.id];
+    return recordId ? state.history.find(record => record.id === recordId) || null : null;
+  }
+
+  function nextIncompleteIndex(session, fromIndex) {
+    for (let offset = 1; offset <= session.ids.length; offset++) {
+      const index = (fromIndex + offset) % session.ids.length;
+      if (!session.completed[session.ids[index]]) return index;
+    }
+    return fromIndex;
   }
 
   function currentExercise() {
@@ -158,7 +192,11 @@
   }
 
   function targetFor(ex) {
-    const calculated = nextPrescription(ex);
+    const saved = savedRecordFor(ex);
+    const calculated = saved ? (ex.kind === 'timer'
+      ? { values: saved.seconds.slice() }
+      : { reps: saved.reps.slice(), weight: saved.weight ?? ex.weight, sideWeight: saved.sideWeight ?? ex.sideWeight })
+      : nextPrescription(ex);
     const draft = state.drafts[ex.id];
     if (ex.kind === 'timer') {
       const values = draft?.values || calculated.values;
@@ -171,15 +209,33 @@
   }
 
   function render() {
+    const session = ensureSession(state.selectedWorkout);
     const ex = currentExercise();
     const ids = getWorkoutIds(state.selectedWorkout);
     const idx = clamp(state.currentIndices[state.selectedWorkout] || 0, 0, ids.length - 1);
+    const saved = savedRecordFor(ex);
+    const edited = !!saved && !!state.drafts[ex.id];
+    const completedCount = ids.filter(id => !!session.completed[id]).length;
     const target = targetFor(ex);
     const now = new Date();
     els.dateLabel.textContent = now.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' }).toUpperCase();
     document.querySelectorAll('.segmented button').forEach(btn => btn.classList.toggle('active', btn.dataset.workout === state.selectedWorkout));
+    els.progressLabel.textContent = session.finishedAt ? `${state.selectedWorkout} complete · ${completedCount} of ${ids.length}` : `${completedCount} of ${ids.length} complete`;
+    els.progressSegments.setAttribute('aria-valuemax', String(ids.length));
+    els.progressSegments.setAttribute('aria-valuenow', String(completedCount));
+    els.progressSegments.style.gridTemplateColumns = `repeat(${ids.length}, minmax(0, 1fr))`;
+    els.progressSegments.innerHTML = ids.map((id, i) => `<span class="progress-segment${session.completed[id] ? ' done' : ''}${i === idx ? ' current' : ''}" aria-hidden="true"></span>`).join('');
+    els.newSessionButton.hidden = !session.finishedAt;
+    els.newSessionButton.setAttribute('aria-label', `Start next ${state.selectedWorkout} session`);
     els.exerciseCounter.textContent = `${idx + 1} OF ${ids.length}`;
     els.exerciseName.textContent = ex.name;
+    els.exerciseLoggedBadge.hidden = !saved;
+    els.exerciseLoggedBadge.textContent = edited ? '✓ LOGGED · EDITING' : '✓ LOGGED';
+    document.querySelector('.exercise-card').classList.toggle('is-logged', !!saved);
+    els.completeButton.classList.toggle('is-saved', !!saved && !edited);
+    els.completeButton.textContent = saved
+      ? edited ? (session.finishedAt ? 'Update exercise' : 'Update & Next') : (session.finishedAt ? 'Workout complete ✓' : 'Saved ✓ · Next')
+      : completedCount === ids.length - 1 ? 'Finish workout' : 'Save & Next';
 
     if (ex.kind === 'bar') {
       els.loadMain.textContent = `${formatNumber(totalWeight(ex, target.sideWeight))} lb total`;
@@ -199,9 +255,10 @@
     }
 
     const values = ex.kind === 'timer' ? target.values : target.reps;
-    els.targetLabel.textContent = values.map(v => ex.kind === 'timer' ? `${v}s` : v).join(' / ');
+    const targetValues = saved?.targetValues || values;
+    els.targetLabel.textContent = targetValues.map(v => ex.kind === 'timer' ? `${v}s` : v).join(' / ');
     renderSetControls(ex, values);
-    els.previousLine.textContent = previousText(ex);
+    els.previousLine.textContent = saved?.previousText || previousText(ex);
     els.undoButton.disabled = !state.undoRecord;
     saveState();
   }
@@ -250,16 +307,44 @@
   }
 
   function completeExercise() {
+    const session = ensureSession(state.selectedWorkout);
     const ex = currentExercise();
+    const saved = savedRecordFor(ex);
+    const ids = session.ids;
+    const idx = state.currentIndices[state.selectedWorkout] || 0;
+    if (saved && !state.drafts[ex.id]) {
+      if (session.finishedAt) showCelebration();
+      else {
+        state.currentIndices[state.selectedWorkout] = nextIncompleteIndex(session, idx);
+        render();
+        showToast('Already logged');
+      }
+      return;
+    }
     const target = targetFor(ex);
-    const before = JSON.parse(JSON.stringify({ ex: state.exercises[ex.id], historyLength: state.history.length, currentIndices: state.currentIndices, sessionCounts: state.sessionCounts }));
+    const prescribed = nextPrescription(ex);
+    const before = JSON.parse(JSON.stringify({
+      workout: state.selectedWorkout,
+      exerciseId: ex.id,
+      ex,
+      historyLength: state.history.length,
+      historyIndex: saved ? state.history.findIndex(record => record.id === saved.id) : -1,
+      previousRecord: saved,
+      currentIndices: state.currentIndices,
+      sessionCounts: state.sessionCounts,
+      session,
+      draft: state.drafts[ex.id] || null
+    }));
     const record = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-      timestamp: new Date().toISOString(),
+      id: saved?.id || `${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      timestamp: saved?.timestamp || new Date().toISOString(),
+      sessionId: session.id,
       workout: state.selectedWorkout,
       exerciseId: ex.id,
       exerciseName: ex.name,
       kind: ex.kind,
+      targetValues: saved?.targetValues || (ex.kind === 'timer' ? prescribed.values : prescribed.reps).slice(),
+      previousText: saved?.previousText || previousText(ex),
       reps: ex.kind === 'timer' ? null : target.reps.slice(),
       seconds: ex.kind === 'timer' ? target.values.slice() : null,
       weight: ex.kind.startsWith('db') ? Number(target.weight) : null,
@@ -269,7 +354,11 @@
       setting: ex.setting || null,
       pace: ex.pace || null
     };
-    state.history.push(record);
+    if (saved) state.history[before.historyIndex] = record;
+    else {
+      state.history.push(record);
+      session.completed[ex.id] = record.id;
+    }
     if (ex.kind === 'timer') {
       ex.last = target.values.slice();
       ex.seconds = target.values.slice();
@@ -281,31 +370,67 @@
     delete state.drafts[ex.id];
     state.undoRecord = before;
 
-    const ids = getWorkoutIds(state.selectedWorkout);
-    const idx = state.currentIndices[state.selectedWorkout] || 0;
-    if (idx >= ids.length - 1) {
-      state.currentIndices[state.selectedWorkout] = 0;
+    const justFinished = ids.every(id => !!session.completed[id]) && !session.finishedAt;
+    if (justFinished) {
+      session.finishedAt = new Date().toISOString();
       state.sessionCounts[state.selectedWorkout] = (state.sessionCounts[state.selectedWorkout] || 0) + 1;
-      showToast(`${state.selectedWorkout} complete ✓`);
-    } else {
-      state.currentIndices[state.selectedWorkout] = idx + 1;
-      showToast('Saved');
     }
+    if (!session.finishedAt) state.currentIndices[state.selectedWorkout] = nextIncompleteIndex(session, idx);
     saveState();
     render();
+    if (justFinished) showCelebration();
+    else showToast(saved ? 'Exercise updated' : 'Exercise logged');
   }
 
   function undoLast() {
     const u = state.undoRecord;
     if (!u) return;
-    state.exercises[u.ex.id] = u.ex;
-    state.history = state.history.slice(0, u.historyLength);
+    closeCelebration();
+    state.exercises[u.exerciseId] = u.ex;
+    if (u.historyIndex >= 0) state.history[u.historyIndex] = u.previousRecord;
+    else state.history = state.history.slice(0, u.historyLength);
     state.currentIndices = u.currentIndices;
     state.sessionCounts = u.sessionCounts;
+    state.activeSessions[u.workout] = u.session;
+    if (u.draft) state.drafts[u.exerciseId] = u.draft;
+    else delete state.drafts[u.exerciseId];
     state.undoRecord = null;
     saveState();
     render();
     showToast('Last save undone');
+  }
+
+  function showCelebration() {
+    const session = ensureSession(state.selectedWorkout);
+    els.celebrationTitle.textContent = `${state.selectedWorkout} complete!`;
+    els.celebrationDetail.textContent = `${session.ids.length} exercises logged. You can still review and edit them.`;
+    els.nextSessionButton.textContent = `Start next ${state.selectedWorkout} session`;
+    els.completionOverlay.hidden = false;
+    els.reviewWorkoutButton.focus();
+  }
+
+  function closeCelebration() {
+    els.completionOverlay.hidden = true;
+  }
+
+  function startNextSession() {
+    const workout = state.selectedWorkout;
+    const session = ensureSession(workout);
+    if (!session.finishedAt) return;
+    const editedId = session.ids.find(id => !!state.drafts[id]);
+    if (editedId) {
+      state.currentIndices[workout] = session.ids.indexOf(editedId);
+      closeCelebration();
+      render();
+      showToast('Update your edited exercise first');
+      return;
+    }
+    state.activeSessions[workout] = null;
+    state.currentIndices[workout] = 0;
+    state.undoRecord = null;
+    closeCelebration();
+    render();
+    showToast('Next session ready');
   }
 
   function moveExercise(delta) {
@@ -457,6 +582,9 @@
   els.prevExerciseButton.addEventListener('click', () => moveExercise(-1));
   els.nextExerciseButton.addEventListener('click', () => moveExercise(1));
   els.completeButton.addEventListener('click', completeExercise);
+  els.newSessionButton.addEventListener('click', startNextSession);
+  els.nextSessionButton.addEventListener('click', startNextSession);
+  els.reviewWorkoutButton.addEventListener('click', closeCelebration);
   els.undoButton.addEventListener('click', undoLast);
   els.historyButton.addEventListener('click', () => openSheet(els.historySheet));
   els.settingsButton.addEventListener('click', () => openSheet(els.settingsSheet));
@@ -469,6 +597,7 @@
   els.exportCsvButton.addEventListener('click', exportCsv);
   els.resetButton.addEventListener('click', resetAll);
   els.saveAdjustButton.addEventListener('click', saveAdjust);
+  window.addEventListener('keydown', event => { if (event.key === 'Escape' && !els.completionOverlay.hidden) closeCelebration(); });
   window.addEventListener('beforeunload', saveState);
 
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
