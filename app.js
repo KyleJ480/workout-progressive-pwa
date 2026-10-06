@@ -229,6 +229,7 @@
     els.newSessionButton.setAttribute('aria-label', `Start next ${state.selectedWorkout} session`);
     els.exerciseCounter.textContent = `${idx + 1} OF ${ids.length}`;
     els.exerciseName.textContent = ex.name;
+    fitExerciseTitle();
     els.exerciseLoggedBadge.hidden = !saved;
     els.exerciseLoggedBadge.textContent = edited ? '✓ LOGGED · EDITING' : '✓ LOGGED';
     document.querySelector('.exercise-card').classList.toggle('is-logged', !!saved);
@@ -261,6 +262,16 @@
     els.previousLine.textContent = saved?.previousText || previousText(ex);
     els.undoButton.disabled = !state.undoRecord;
     saveState();
+  }
+
+  function fitExerciseTitle() {
+    const title = els.exerciseName;
+    title.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(title).fontSize);
+    while (title.scrollWidth > title.clientWidth && size > 15) {
+      size = Math.max(15, size - 1);
+      title.style.fontSize = `${size}px`;
+    }
   }
 
   function renderSetControls(ex, values) {
@@ -598,6 +609,7 @@
   els.resetButton.addEventListener('click', resetAll);
   els.saveAdjustButton.addEventListener('click', saveAdjust);
   window.addEventListener('keydown', event => { if (event.key === 'Escape' && !els.completionOverlay.hidden) closeCelebration(); });
+  window.addEventListener('resize', fitExerciseTitle);
   window.addEventListener('beforeunload', saveState);
 
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
