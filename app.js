@@ -603,6 +603,7 @@
     const records = exerciseRecords(ex.id);
     const points = records.map(record => ({ record, value: chartValue(record, insightsMetric) }))
       .filter(point => Number.isFinite(point.value) && point.value >= 0);
+    els.insightsChart.classList.toggle('is-empty', !points.length);
     els.insightsCount.textContent = String(records.length);
     els.insightsChartNote.textContent = `Each point is a logged workout. Skipped days are not plotted.`;
     if (!points.length) {
@@ -610,7 +611,7 @@
       els.insightsChange.textContent = 'No results yet';
       els.insightsChange.classList.remove('down');
       els.insightsBest.textContent = '—';
-      els.insightsChart.innerHTML = '<div class="empty-state">Save an exercise to start your chart.</div>';
+      els.insightsChart.innerHTML = '<div class="chart-empty"><p>No results for this exercise yet.</p><button type="button" data-add-past>Add a past result</button></div>';
       els.insightsFirstDate.textContent = '';
       els.insightsLastDate.textContent = '';
     } else {
@@ -916,6 +917,7 @@
   els.closeInsightsButton.addEventListener('click', closeInsights);
   els.insightsExerciseSelect.addEventListener('change', () => { insightsExerciseId = els.insightsExerciseSelect.value; closePastEntry(); renderInsights(); });
   els.insightsMetrics.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { insightsMetric = button.dataset.metric; renderInsights(); }));
+  els.insightsChart.addEventListener('click', event => { if (event.target.closest('[data-add-past]')) openPastEntry(); });
   els.addPastResultButton.addEventListener('click', () => openPastEntry());
   els.pastEntryExercise.addEventListener('change', () => renderPastEntryFields());
   els.pastEntryForm.addEventListener('submit', savePastEntry);
