@@ -71,7 +71,7 @@
     targetLabel: $('targetLabel'), setsGrid: $('setsGrid'), previousLine: $('previousLine'), completeButton: $('completeButton'),
     prevExerciseButton: $('prevExerciseButton'), nextExerciseButton: $('nextExerciseButton'), undoButton: $('undoButton'),
     insightsButton: $('insightsButton'), insightsPage: $('insightsPage'), closeInsightsButton: $('closeInsightsButton'),
-    exerciseInsightsView: $('exerciseInsightsView'), consistencyView: $('consistencyView'), consistencyPercent: $('consistencyPercent'), consistencySummary: $('consistencySummary'), consistencyTrack: $('consistencyTrack'), consistencyFill: $('consistencyFill'), consistencyGoal: $('consistencyGoal'), consistencyVisualTitle: $('consistencyVisualTitle'), consistencyVisualCount: $('consistencyVisualCount'), consistencyChart: $('consistencyChart'),
+    exerciseInsightsView: $('exerciseInsightsView'), consistencyView: $('consistencyView'), consistencyPercent: $('consistencyPercent'), consistencySummary: $('consistencySummary'), consistencyTrack: $('consistencyTrack'), consistencyFill: $('consistencyFill'), consistencyGoal: $('consistencyGoal'), consistencyVisualTitle: $('consistencyVisualTitle'), consistencyVisualCount: $('consistencyVisualCount'), consistencyChart: $('consistencyChart'), consistencyLegend: $('consistencyLegend'),
     insightsExerciseSelect: $('insightsExerciseSelect'), insightsMetricLabel: $('insightsMetricLabel'), insightsLatestValue: $('insightsLatestValue'), insightsChange: $('insightsChange'), insightsMetrics: $('insightsMetrics'), insightsChart: $('insightsChart'), insightsFirstDate: $('insightsFirstDate'), insightsLastDate: $('insightsLastDate'), insightsChartNote: $('insightsChartNote'), insightsCount: $('insightsCount'), insightsBest: $('insightsBest'), insightsResultList: $('insightsResultList'), addPastResultButton: $('addPastResultButton'),
     pastEntryForm: $('pastEntryForm'), pastEntryTitle: $('pastEntryTitle'), closePastEntryButton: $('closePastEntryButton'), pastEntryDate: $('pastEntryDate'), pastEntryExercise: $('pastEntryExercise'), pastEntryLoadRow: $('pastEntryLoadRow'), pastEntryLoadLabel: $('pastEntryLoadLabel'), pastEntryLoad: $('pastEntryLoad'), pastEntrySets: $('pastEntrySets'), pastEntrySet1: $('pastEntrySet1'), pastEntrySet2: $('pastEntrySet2'), pastEntrySet3: $('pastEntrySet3'), pastEntrySkiFields: $('pastEntrySkiFields'), pastEntrySetting: $('pastEntrySetting'), pastEntryPace: $('pastEntryPace'), pastEntryUseForTarget: $('pastEntryUseForTarget'), pastEntryHint: $('pastEntryHint'), savePastEntryButton: $('savePastEntryButton'), cancelPastEntryButton: $('cancelPastEntryButton'), deletePastEntryButton: $('deletePastEntryButton'),
     historyButton: $('historyButton'), settingsButton: $('settingsButton'), editExerciseButton: $('editExerciseButton'),
@@ -681,6 +681,18 @@
     return Date.UTC(year, month - 1, day) / 86400000;
   }
 
+  function isSunday(key) {
+    return new Date(dateOrdinal(key) * 86400000).getUTCDay() === 0;
+  }
+
+  function plannedDaysBetween(startKey, endKey) {
+    let count = 0;
+    for (let day = dateOrdinal(startKey); day <= dateOrdinal(endKey); day++) {
+      if (new Date(day * 86400000).getUTCDay() !== 0) count++;
+    }
+    return count;
+  }
+
   function loggedDayKeys(todayKey) {
     const days = new Set();
     state.history.forEach(record => {
@@ -700,53 +712,58 @@
     today.setHours(12, 0, 0, 0);
     const todayKey = localDateString(today);
     const days = loggedDayKeys(todayKey);
-    const firstDay = days.size ? [...days].sort()[0] : null;
     const start = consistencyRange === '30'
       ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29, 12)
       : new Date(today.getFullYear(), today.getMonth() - 11, 1, 12);
     const startKey = localDateString(start);
-    const trackedStart = firstDay && firstDay > startKey ? firstDay : startKey;
-    const trackedDays = firstDay ? dateOrdinal(todayKey) - dateOrdinal(trackedStart) + 1 : 0;
-    const trainedDays = [...days].filter(key => key >= trackedStart).length;
-    const rate = trackedDays ? Math.round(trainedDays / trackedDays * 100) : 0;
-    const targetDays = Math.ceil(trackedDays * 6 / 7);
-    els.consistencyPercent.textContent = trackedDays ? `${rate}%` : '—';
-    els.consistencySummary.textContent = trackedDays ? `${trainedDays} of ${trackedDays} days trained` : 'Log a workout to start tracking.';
+    const plannedDays = plannedDaysBetween(startKey, todayKey);
+    const trainedDays = [...days].filter(key => key >= startKey && !isSunday(key)).length;
+    const rate = plannedDays ? trainedDays / plannedDays * 100 : 0;
+    const shownRate = rate > 0 && rate < 1 ? rate.toFixed(1) : String(Math.round(rate));
+    els.consistencyPercent.textContent = `${shownRate}%`;
+    els.consistencySummary.textContent = `${trainedDays} of ${plannedDays} planned days logged`;
     els.consistencyFill.style.width = `${rate}%`;
-    els.consistencyTrack.setAttribute('aria-valuenow', String(rate));
-    els.consistencyGoal.textContent = trackedDays ? `6-day weekly goal ≈ ${targetDays} days here · white mark = 86%` : 'Your first logged day starts the tracking period.';
+    els.consistencyTrack.setAttribute('aria-valuenow', rate.toFixed(1));
+    els.consistencyGoal.textContent = 'Sunday is your rest day and is not counted.';
     document.querySelectorAll('[data-consistency-range]').forEach(button => {
       const active = button.dataset.consistencyRange === consistencyRange;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     });
-    els.consistencyVisualTitle.textContent = consistencyRange === '30' ? 'Last 30 days' : 'Past 12 months';
-    els.consistencyVisualCount.textContent = trackedDays ? `${trainedDays} training ${trainedDays === 1 ? 'day' : 'days'}` : 'No logs yet';
+    els.consistencyVisualTitle.textContent = consistencyRange === '30' ? 'Calendar' : 'Monthly trend';
+    const dateLabel = date => date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    els.consistencyVisualCount.textContent = consistencyRange === '30'
+      ? `${dateLabel(start)} – ${dateLabel(today)}`
+      : `${start.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })} – ${today.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}`;
     if (consistencyRange === '30') {
-      const headings = ['M','T','W','T','F','S','S'].map(day => `<span>${day}</span>`).join('');
-      const blanks = '<span class="consistency-day-spacer" aria-hidden="true"></span>'.repeat((start.getDay() + 6) % 7);
+      const headings = ['S','M','T','W','T','F','S'].map((day, index) => `<span${index === 0 ? ' class="sunday"' : ''}>${day}</span>`).join('');
+      const leading = start.getDay();
+      const blanks = '<span class="consistency-day-spacer" aria-hidden="true"></span>'.repeat(leading);
       const cells = Array.from({ length: 30 }, (_, index) => {
         const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12);
         const key = localDateString(date);
-        const status = !firstDay || key < firstDay ? 'untracked' : days.has(key) ? 'trained' : 'rested';
+        const status = date.getDay() === 0 ? 'rest' : days.has(key) ? 'trained' : 'missed';
         const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const detail = status === 'trained' ? 'trained' : status === 'rested' ? 'no log' : 'before first log';
-        return `<span class="consistency-day ${status}" aria-label="${escapeHtml(label)}: ${detail}" title="${escapeHtml(label)}: ${detail}">${date.getDate()}</span>`;
+        const detail = status === 'rest' ? `Sunday rest day${days.has(key) ? ', log excluded' : ''}` : status === 'trained' ? 'trained' : 'no log';
+        const month = index === 0 || date.getDate() === 1 ? date.toLocaleDateString(undefined, { month: 'short' }) : '&nbsp;';
+        return `<span class="consistency-day ${status}" aria-label="${escapeHtml(label)}: ${detail}" title="${escapeHtml(label)}: ${detail}"><small aria-hidden="true">${month}</small><b aria-hidden="true">${date.getDate()}</b></span>`;
       }).join('');
-      els.consistencyChart.innerHTML = `<div class="consistency-day-labels" aria-hidden="true">${headings}</div><div class="consistency-days">${blanks}${cells}</div>`;
+      const trailing = '<span class="consistency-day-spacer" aria-hidden="true"></span>'.repeat((7 - (leading + 30) % 7) % 7);
+      els.consistencyChart.innerHTML = `<div class="consistency-day-labels" aria-hidden="true">${headings}</div><div class="consistency-days">${blanks}${cells}${trailing}</div>`;
+      els.consistencyLegend.innerHTML = '<span><i class="trained"></i>Trained</span><span><i class="missed"></i>No log</span><span><i class="rest"></i>Sunday rest</span>';
     } else {
       const months = Array.from({ length: 12 }, (_, index) => {
         const month = new Date(today.getFullYear(), today.getMonth() - 11 + index, 1, 12);
         const monthStart = localDateString(month);
         const monthEnd = index === 11 ? todayKey : localDateString(new Date(month.getFullYear(), month.getMonth() + 1, 0, 12));
-        const measuredStart = firstDay && firstDay > monthStart ? firstDay : monthStart;
-        const measuredDays = firstDay && measuredStart <= monthEnd ? dateOrdinal(monthEnd) - dateOrdinal(measuredStart) + 1 : 0;
-        const count = [...days].filter(key => key >= measuredStart && key <= monthEnd).length;
+        const measuredDays = plannedDaysBetween(monthStart, monthEnd);
+        const count = [...days].filter(key => key >= monthStart && key <= monthEnd && !isSunday(key)).length;
         const percent = measuredDays ? Math.round(count / measuredDays * 100) : 0;
         const label = month.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
-        return `<div class="consistency-month${measuredDays ? '' : ' untracked'}" aria-label="${escapeHtml(label)}: ${measuredDays ? `${count} of ${measuredDays} days trained, ${percent}%` : 'before first log'}" title="${escapeHtml(label)}: ${measuredDays ? `${count} of ${measuredDays} days trained` : 'before first log'}"><div class="consistency-month-track"><span class="consistency-month-fill" style="height:${percent}%"></span></div><span class="consistency-month-label">${escapeHtml(month.toLocaleDateString(undefined, { month: 'short' }))}</span></div>`;
+        return `<div class="consistency-month" aria-label="${escapeHtml(label)}: ${count} of ${measuredDays} planned days logged, ${percent}%" title="${escapeHtml(label)}: ${count} of ${measuredDays} planned days logged"><div class="consistency-month-track"><span class="consistency-month-fill" style="height:${percent}%"></span></div><span class="consistency-month-label">${escapeHtml(month.toLocaleDateString(undefined, { month: 'short' }))}</span></div>`;
       }).join('');
       els.consistencyChart.innerHTML = `<div class="consistency-months">${months}</div>`;
+      els.consistencyLegend.innerHTML = '<span><i class="trained"></i>Share of planned days logged each month</span>';
     }
   }
 

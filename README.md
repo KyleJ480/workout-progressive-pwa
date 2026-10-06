@@ -16,7 +16,7 @@ A small, dependency-free progressive-overload PWA designed for iPhone.
 - Each exercise has an illustration beside its counter; tap it to view a larger reference image.
 - The chart icon opens a separate Progress view for weight, total reps, or timed-set progress. The line connects logged workouts; skipped days create no point.
 - Add or edit a past exercise result with its actual date. You can choose whether a latest backfilled result updates the next workout target.
-- The Progress view also shows training consistency for the last 30 days or 12 months against a six-days-per-week goal. One or more logged exercises counts as one training day; past entries count on their chosen date. Tracking begins with the first logged day.
+- The Progress view also shows training consistency for the last 30 days or 12 months against a six-days-per-week goal. Sundays are rest days and are excluded. One or more logged exercises counts as one training day; past entries count on their chosen date. Unlogged planned days count as missed within the selected period.
 - Finishing the last exercise keeps the completed workout in view until you explicitly start the next session.
 - PWA/service worker support allows the app to run offline after the first successful load.
 - Export/import a JSON backup and export workout history as CSV.
