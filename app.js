@@ -712,19 +712,24 @@
     today.setHours(12, 0, 0, 0);
     const todayKey = localDateString(today);
     const days = loggedDayKeys(todayKey);
+    const firstDay = days.size ? [...days].sort()[0] : null;
     const start = consistencyRange === '30'
       ? new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29, 12)
       : new Date(today.getFullYear(), today.getMonth() - 11, 1, 12);
     const startKey = localDateString(start);
-    const plannedDays = plannedDaysBetween(startKey, todayKey);
-    const trainedDays = [...days].filter(key => key >= startKey && !isSunday(key)).length;
+    const trackedStart = firstDay && firstDay > startKey ? firstDay : startKey;
+    const plannedDays = firstDay ? plannedDaysBetween(trackedStart, todayKey) : 0;
+    const trainedDays = [...days].filter(key => key >= trackedStart && !isSunday(key)).length;
     const rate = plannedDays ? trainedDays / plannedDays * 100 : 0;
     const shownRate = rate > 0 && rate < 1 ? rate.toFixed(1) : String(Math.round(rate));
-    els.consistencyPercent.textContent = `${shownRate}%`;
-    els.consistencySummary.textContent = `${trainedDays} of ${plannedDays} planned days logged`;
+    const since = firstDay && firstDay >= startKey
+      ? ` since ${new Date(dateOrdinal(firstDay) * 86400000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}`
+      : ' in this period';
+    els.consistencyPercent.textContent = plannedDays ? `${shownRate}%` : '—';
+    els.consistencySummary.textContent = firstDay ? `${trainedDays} of ${plannedDays} planned days logged${since}` : 'Log a workout to start tracking.';
     els.consistencyFill.style.width = `${rate}%`;
-    els.consistencyTrack.setAttribute('aria-valuenow', rate.toFixed(1));
-    els.consistencyGoal.textContent = 'Sunday is your rest day and is not counted.';
+    els.consistencyTrack.setAttribute('aria-valuenow', plannedDays ? rate.toFixed(1) : '0');
+    els.consistencyGoal.textContent = 'Sundays are rest days and are not counted.';
     document.querySelectorAll('[data-consistency-range]').forEach(button => {
       const active = button.dataset.consistencyRange === consistencyRange;
       button.classList.toggle('active', active);
@@ -742,25 +747,27 @@
       const cells = Array.from({ length: 30 }, (_, index) => {
         const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12);
         const key = localDateString(date);
-        const status = date.getDay() === 0 ? 'rest' : days.has(key) ? 'trained' : 'missed';
+        const status = date.getDay() === 0 ? 'rest' : !firstDay || key < firstDay ? 'untracked' : days.has(key) ? 'trained' : 'missed';
         const label = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-        const detail = status === 'rest' ? `Sunday rest day${days.has(key) ? ', log excluded' : ''}` : status === 'trained' ? 'trained' : 'no log';
+        const detail = status === 'rest' ? `Sunday rest day${days.has(key) ? ', log excluded' : ''}` : status === 'trained' ? 'trained' : status === 'missed' ? 'no log' : 'before first log';
         const month = index === 0 || date.getDate() === 1 ? date.toLocaleDateString(undefined, { month: 'short' }) : '&nbsp;';
         return `<span class="consistency-day ${status}" aria-label="${escapeHtml(label)}: ${detail}" title="${escapeHtml(label)}: ${detail}"><small aria-hidden="true">${month}</small><b aria-hidden="true">${date.getDate()}</b></span>`;
       }).join('');
       const trailing = '<span class="consistency-day-spacer" aria-hidden="true"></span>'.repeat((7 - (leading + 30) % 7) % 7);
       els.consistencyChart.innerHTML = `<div class="consistency-day-labels" aria-hidden="true">${headings}</div><div class="consistency-days">${blanks}${cells}${trailing}</div>`;
-      els.consistencyLegend.innerHTML = '<span><i class="trained"></i>Trained</span><span><i class="missed"></i>No log</span><span><i class="rest"></i>Sunday rest</span>';
+      els.consistencyLegend.innerHTML = '<span><i class="trained"></i>Trained</span><span><i class="missed"></i>No log</span><span><i class="rest"></i>Sunday</span><span><i class="untracked"></i>Before start</span>';
     } else {
       const months = Array.from({ length: 12 }, (_, index) => {
         const month = new Date(today.getFullYear(), today.getMonth() - 11 + index, 1, 12);
         const monthStart = localDateString(month);
         const monthEnd = index === 11 ? todayKey : localDateString(new Date(month.getFullYear(), month.getMonth() + 1, 0, 12));
-        const measuredDays = plannedDaysBetween(monthStart, monthEnd);
-        const count = [...days].filter(key => key >= monthStart && key <= monthEnd && !isSunday(key)).length;
+        const measuredStart = firstDay && firstDay > monthStart ? firstDay : monthStart;
+        const measuredDays = firstDay ? plannedDaysBetween(measuredStart, monthEnd) : 0;
+        const count = [...days].filter(key => key >= measuredStart && key <= monthEnd && !isSunday(key)).length;
         const percent = measuredDays ? Math.round(count / measuredDays * 100) : 0;
         const label = month.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
-        return `<div class="consistency-month" aria-label="${escapeHtml(label)}: ${count} of ${measuredDays} planned days logged, ${percent}%" title="${escapeHtml(label)}: ${count} of ${measuredDays} planned days logged"><div class="consistency-month-track"><span class="consistency-month-fill" style="height:${percent}%"></span></div><span class="consistency-month-label">${escapeHtml(month.toLocaleDateString(undefined, { month: 'short' }))}</span></div>`;
+        const detail = measuredDays ? `${count} of ${measuredDays} planned days logged, ${percent}%` : 'before first log';
+        return `<div class="consistency-month${measuredDays ? '' : ' untracked'}" aria-label="${escapeHtml(label)}: ${detail}" title="${escapeHtml(label)}: ${detail}"><div class="consistency-month-track"><span class="consistency-month-fill" style="height:${percent}%"></span></div><span class="consistency-month-label">${escapeHtml(month.toLocaleDateString(undefined, { month: 'short' }))}</span></div>`;
       }).join('');
       els.consistencyChart.innerHTML = `<div class="consistency-months">${months}</div>`;
       els.consistencyLegend.innerHTML = '<span><i class="trained"></i>Share of planned days logged each month</span>';

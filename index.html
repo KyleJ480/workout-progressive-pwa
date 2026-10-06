@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=8" />
+  <link rel="stylesheet" href="./styles.css?v=9" />
   <title>Progress</title>
 </head>
 <body>
@@ -154,16 +154,16 @@
         </div>
         <section class="consistency-card" aria-label="Training consistency">
           <div class="consistency-heading"><div><div class="eyebrow">DAYS TRAINED</div><strong id="consistencyPercent">—</strong></div><span>Goal · 6 days/week</span></div>
-          <p id="consistencySummary">0 planned days logged</p>
+          <p id="consistencySummary">Log a workout to start tracking.</p>
           <div class="consistency-track" id="consistencyTrack" role="progressbar" aria-label="Share of planned days logged" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="consistencyFill"></span></div>
           <p class="consistency-goal" id="consistencyGoal">Sunday is your rest day and is not counted.</p>
         </section>
         <section class="consistency-visual" aria-label="Training days over time">
           <div class="consistency-visual-heading"><h2 id="consistencyVisualTitle">Last 30 days</h2><span id="consistencyVisualCount"></span></div>
           <div id="consistencyChart"></div>
-          <div class="consistency-legend" id="consistencyLegend"><span><i class="trained"></i>Trained</span><span><i class="missed"></i>No log</span><span><i class="rest"></i>Sunday rest</span></div>
+          <div class="consistency-legend" id="consistencyLegend"><span><i class="trained"></i>Trained</span><span><i class="missed"></i>No log</span><span><i class="rest"></i>Sunday</span><span><i class="untracked"></i>Before start</span></div>
         </section>
-        <p class="consistency-note">Each date counts once. Unlogged planned days lower the percentage; add past results to fill gaps.</p>
+        <p class="consistency-note">Tracking starts with your first logged day. Adding an older result moves the start back.</p>
       </div>
     </div>
   </section>
@@ -245,6 +245,6 @@
     </div>
   </section>
 
-  <script src="./app.js?v=8" defer></script>
+  <script src="./app.js?v=9" defer></script>
 </body>
 </html>

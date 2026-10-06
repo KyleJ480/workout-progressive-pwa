@@ -245,9 +245,11 @@ h3 { font-size: 26px; letter-spacing: -.035em; }
 .consistency-day.trained { background: rgba(48,209,88,.25); color: #77e897; }
 .consistency-day.missed { background: #303034; color: var(--secondary); }
 .consistency-day.rest { background: rgba(10,132,255,.13); color: #8bbaff; }
+.consistency-day.untracked { background: #222225; color: var(--tertiary); }
 .consistency-months { height: 140px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 5px; align-items: end; }
 .consistency-month { height: 100%; min-width: 0; display: grid; grid-template-rows: 1fr auto; gap: 7px; text-align: center; }
 .consistency-month-track { min-height: 105px; display: flex; align-items: end; border-radius: 7px; background: #303034; overflow: hidden; }
+.consistency-month.untracked .consistency-month-track { background: #222225; }
 .consistency-month-fill { display: block; width: 100%; min-height: 0; background: var(--green); border-radius: 7px 7px 0 0; }
 .consistency-month-label { overflow: hidden; color: var(--secondary); font-size: 9px; font-weight: 700; white-space: nowrap; }
 .consistency-legend { display: flex; flex-wrap: wrap; gap: 11px; margin-top: 10px; color: var(--secondary); font-size: 10px; }
@@ -256,6 +258,7 @@ h3 { font-size: 26px; letter-spacing: -.035em; }
 .consistency-legend i.trained { background: var(--green); }
 .consistency-legend i.missed { background: #48484c; }
 .consistency-legend i.rest { background: #345476; }
+.consistency-legend i.untracked { background: #29292c; }
 .consistency-note { color: var(--secondary); font-size: 11px; line-height: 1.3; }
 .past-entry-panel { display: grid; gap: 13px; margin-top: 8px; padding: 17px; scroll-margin-top: calc(62px + var(--safe-top)); border-radius: 22px; background: var(--surface); box-shadow: inset 0 0 0 1px rgba(10,132,255,.25); }
 .past-entry-heading { display: flex; align-items: center; justify-content: space-between; }
