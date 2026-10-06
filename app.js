@@ -4,6 +4,23 @@
   const STORAGE_KEY = 'progress-workout-v1';
   const APP_VERSION = 1;
   const PLATES = [45, 25, 10, 5, 2.5];
+  const EXERCISE_IMAGES = {
+    bench: 'barbell-bench-press.png',
+    ezOHP: 'ez-bar-overhead-press.png',
+    inclineDB: 'incline-dumbbell-bench-press.png',
+    shoulderFly: 'dumbbell-shoulder-fly.png',
+    ski: 'ski-machine-triceps.png',
+    singleArmRow: 'single-arm-dumbbell-row.png',
+    pullover: 'dumbbell-lat-pullover.png',
+    ezRow: 'reverse-grip-ez-bar-row.png',
+    reverseFly: 'reverse-fly.png',
+    ezShrug: 'ez-bar-barbell-shrug.png',
+    curls: 'dumbbell-bicep-curl.png',
+    rdl: 'romanian-deadlift.png',
+    lunges: 'weighted-lunge.png',
+    calf: 'standing-calf-raise.png',
+    planks: 'plank.png'
+  };
 
   const defaultState = () => ({
     version: APP_VERSION,
@@ -42,7 +59,8 @@
 
   const $ = id => document.getElementById(id);
   const els = {
-    dateLabel: $('dateLabel'), exerciseCounter: $('exerciseCounter'), exerciseName: $('exerciseName'), loadMain: $('loadMain'), loadSub: $('loadSub'),
+    dateLabel: $('dateLabel'), exerciseCounter: $('exerciseCounter'), exerciseName: $('exerciseName'), exerciseImage: $('exerciseImage'), exerciseImageButton: $('exerciseImageButton'), loadMain: $('loadMain'), loadSub: $('loadSub'),
+    exerciseImageOverlay: $('exerciseImageOverlay'), exerciseImageTitle: $('exerciseImageTitle'), exerciseImageLarge: $('exerciseImageLarge'), closeExerciseImageButton: $('closeExerciseImageButton'),
     progressLabel: $('progressLabel'), progressSegments: $('progressSegments'), newSessionButton: $('newSessionButton'), exerciseLoggedBadge: $('exerciseLoggedBadge'),
     targetLabel: $('targetLabel'), setsGrid: $('setsGrid'), previousLine: $('previousLine'), completeButton: $('completeButton'),
     prevExerciseButton: $('prevExerciseButton'), nextExerciseButton: $('nextExerciseButton'), undoButton: $('undoButton'),
@@ -229,6 +247,8 @@
     els.newSessionButton.setAttribute('aria-label', `Start next ${state.selectedWorkout} session`);
     els.exerciseCounter.textContent = `${idx + 1} OF ${ids.length}`;
     els.exerciseName.textContent = ex.name;
+    els.exerciseImage.src = `./icons/exercises/${EXERCISE_IMAGES[ex.id]}`;
+    els.exerciseImageButton.setAttribute('aria-label', `View ${ex.name} illustration`);
     fitExerciseTitle();
     els.exerciseLoggedBadge.hidden = !saved;
     els.exerciseLoggedBadge.textContent = edited ? '✓ LOGGED · EDITING' : '✓ LOGGED';
@@ -272,6 +292,20 @@
       size = Math.max(15, size - 1);
       title.style.fontSize = `${size}px`;
     }
+  }
+
+  function openExerciseImage() {
+    const ex = currentExercise();
+    els.exerciseImageTitle.textContent = ex.name;
+    els.exerciseImageLarge.src = `./icons/exercises/${EXERCISE_IMAGES[ex.id]}`;
+    els.exerciseImageLarge.alt = `${ex.name} illustration`;
+    els.exerciseImageOverlay.hidden = false;
+    els.closeExerciseImageButton.focus();
+  }
+
+  function closeExerciseImage() {
+    els.exerciseImageOverlay.hidden = true;
+    els.exerciseImageButton.focus();
   }
 
   function renderSetControls(ex, values) {
@@ -600,6 +634,9 @@
   els.historyButton.addEventListener('click', () => openSheet(els.historySheet));
   els.settingsButton.addEventListener('click', () => openSheet(els.settingsSheet));
   els.editExerciseButton.addEventListener('click', openAdjust);
+  els.exerciseImageButton.addEventListener('click', openExerciseImage);
+  els.closeExerciseImageButton.addEventListener('click', closeExerciseImage);
+  els.exerciseImageOverlay.addEventListener('click', event => { if (event.target === els.exerciseImageOverlay) closeExerciseImage(); });
   els.modalBackdrop.addEventListener('click', closeSheet);
   document.querySelectorAll('.close-sheet').forEach(btn => btn.addEventListener('click', closeSheet));
   els.ezBarWeight.addEventListener('change', saveEzBarWeight);
@@ -608,7 +645,10 @@
   els.exportCsvButton.addEventListener('click', exportCsv);
   els.resetButton.addEventListener('click', resetAll);
   els.saveAdjustButton.addEventListener('click', saveAdjust);
-  window.addEventListener('keydown', event => { if (event.key === 'Escape' && !els.completionOverlay.hidden) closeCelebration(); });
+  window.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !els.exerciseImageOverlay.hidden) closeExerciseImage();
+    else if (event.key === 'Escape' && !els.completionOverlay.hidden) closeCelebration();
+  });
   window.addEventListener('resize', fitExerciseTitle);
   window.addEventListener('beforeunload', saveState);
 

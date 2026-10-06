@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
   <link rel="icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css?v=3" />
+  <link rel="stylesheet" href="./styles.css?v=4" />
   <title>Progress</title>
 </head>
 <body>
@@ -46,6 +46,9 @@
 
     <main class="exercise-card">
       <div class="exercise-meta">
+        <button class="exercise-image-button" id="exerciseImageButton" type="button" aria-label="View exercise illustration">
+          <img id="exerciseImage" src="./icons/exercises/barbell-bench-press.png" alt="" width="52" height="52" decoding="async" />
+        </button>
         <div class="exercise-kicker"><div class="eyebrow" id="exerciseCounter">1 OF 5</div><span class="logged-badge" id="exerciseLoggedBadge" hidden>✓ LOGGED</span></div>
         <button class="mini-button" id="editExerciseButton">Adjust</button>
         <h2 id="exerciseName">Barbell Bench Press</h2>
@@ -95,6 +98,16 @@
       <p id="celebrationDetail">All exercises logged.</p>
       <button class="primary-button full" id="reviewWorkoutButton">Review workout</button>
       <button class="text-button celebration-next" id="nextSessionButton">Start next session</button>
+    </div>
+  </section>
+
+  <section class="exercise-image-overlay" id="exerciseImageOverlay" role="dialog" aria-modal="true" aria-labelledby="exerciseImageTitle" hidden>
+    <div class="exercise-image-panel">
+      <div class="exercise-image-panel-header">
+        <div><div class="eyebrow">EXERCISE</div><h3 id="exerciseImageTitle">Barbell Bench Press</h3></div>
+        <button class="icon-button" id="closeExerciseImageButton" type="button" aria-label="Close illustration">×</button>
+      </div>
+      <img id="exerciseImageLarge" src="./icons/exercises/barbell-bench-press.png" alt="Barbell Bench Press illustration" width="360" height="360" />
     </div>
   </section>
 
@@ -151,6 +164,6 @@
     </div>
   </section>
 
-  <script src="./app.js?v=3" defer></script>
+  <script src="./app.js?v=4" defer></script>
 </body>
 </html>
