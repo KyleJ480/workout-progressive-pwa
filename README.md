@@ -56,6 +56,7 @@ No database or server is required. Your workout data stays in browser storage on
 4. Open the new **Progress** icon from your Home Screen.
 
 It launches as a standalone app and works offline after it has loaded successfully at least once.
+If an existing Home Screen icon does not update, export a backup in the app before removing it. Then add the site to your Home Screen again and import the backup if your saved workouts are missing.
 
 ## Data / backup model
 
