@@ -1,4 +1,4 @@
-const CACHE = 'progress-v10';
+const CACHE = 'progress-v11';
 const EXERCISE_IMAGES = [
   'barbell-bench-press.png', 'ez-bar-overhead-press.png', 'incline-dumbbell-bench-press.png',
   'dumbbell-shoulder-fly.png', 'ski-machine-triceps.png', 'single-arm-dumbbell-row.png',
@@ -7,7 +7,7 @@ const EXERCISE_IMAGES = [
   'weighted-lunge.png', 'standing-calf-raise.png', 'plank.png'
 ];
 const ASSETS = [
-  './', './index.html', './styles.css?v=9', './app.js?v=9', './manifest.webmanifest?v=2',
+  './', './index.html', './styles.css?v=10', './app.js?v=10', './manifest.webmanifest?v=2',
   './icons/icon-v2-180.png', './icons/icon-v2-192.png', './icons/icon-v2-512.png',
   ...EXERCISE_IMAGES.map(file => `./icons/exercises/${file}`)
 ];

@@ -58,7 +58,6 @@
   let activeSheet = null;
   let toastTimer = null;
   let insightsExerciseId = null;
-  let insightsMetric = 'load';
   let consistencyRange = '30';
   let editingPastRecordId = null;
   let lastPastDate = '';
@@ -72,7 +71,7 @@
     prevExerciseButton: $('prevExerciseButton'), nextExerciseButton: $('nextExerciseButton'), undoButton: $('undoButton'),
     insightsButton: $('insightsButton'), insightsPage: $('insightsPage'), closeInsightsButton: $('closeInsightsButton'),
     exerciseInsightsView: $('exerciseInsightsView'), consistencyView: $('consistencyView'), consistencyPercent: $('consistencyPercent'), consistencySummary: $('consistencySummary'), consistencyTrack: $('consistencyTrack'), consistencyFill: $('consistencyFill'), consistencyGoal: $('consistencyGoal'), consistencyVisualTitle: $('consistencyVisualTitle'), consistencyVisualCount: $('consistencyVisualCount'), consistencyChart: $('consistencyChart'), consistencyLegend: $('consistencyLegend'),
-    insightsExerciseSelect: $('insightsExerciseSelect'), insightsMetricLabel: $('insightsMetricLabel'), insightsLatestValue: $('insightsLatestValue'), insightsChange: $('insightsChange'), insightsMetrics: $('insightsMetrics'), insightsChart: $('insightsChart'), insightsFirstDate: $('insightsFirstDate'), insightsLastDate: $('insightsLastDate'), insightsChartNote: $('insightsChartNote'), insightsCount: $('insightsCount'), insightsBest: $('insightsBest'), insightsResultList: $('insightsResultList'), addPastResultButton: $('addPastResultButton'),
+    insightsExerciseSelect: $('insightsExerciseSelect'), insightsMetricLabel: $('insightsMetricLabel'), insightsLatestValue: $('insightsLatestValue'), insightsChange: $('insightsChange'), insightsChart: $('insightsChart'), insightsFirstDate: $('insightsFirstDate'), insightsLastDate: $('insightsLastDate'), insightsChartNote: $('insightsChartNote'), insightsCount: $('insightsCount'), insightsBest: $('insightsBest'), insightsResultList: $('insightsResultList'), addPastResultButton: $('addPastResultButton'),
     pastEntryForm: $('pastEntryForm'), pastEntryTitle: $('pastEntryTitle'), closePastEntryButton: $('closePastEntryButton'), pastEntryDate: $('pastEntryDate'), pastEntryExercise: $('pastEntryExercise'), pastEntryLoadRow: $('pastEntryLoadRow'), pastEntryLoadLabel: $('pastEntryLoadLabel'), pastEntryLoad: $('pastEntryLoad'), pastEntrySets: $('pastEntrySets'), pastEntrySet1: $('pastEntrySet1'), pastEntrySet2: $('pastEntrySet2'), pastEntrySet3: $('pastEntrySet3'), pastEntrySkiFields: $('pastEntrySkiFields'), pastEntrySetting: $('pastEntrySetting'), pastEntryPace: $('pastEntryPace'), pastEntryUseForTarget: $('pastEntryUseForTarget'), pastEntryHint: $('pastEntryHint'), savePastEntryButton: $('savePastEntryButton'), cancelPastEntryButton: $('cancelPastEntryButton'), deletePastEntryButton: $('deletePastEntryButton'),
     historyButton: $('historyButton'), settingsButton: $('settingsButton'), editExerciseButton: $('editExerciseButton'),
     modalBackdrop: $('modalBackdrop'), historySheet: $('historySheet'), settingsSheet: $('settingsSheet'), adjustSheet: $('adjustSheet'),
@@ -402,6 +401,9 @@
       targetValues: saved?.targetValues || (ex.kind === 'timer' ? prescribed.values : prescribed.reps).slice(),
       previousText: saved?.previousText || previousText(ex),
       reps: ex.kind === 'timer' ? null : target.reps.slice(),
+      minReps: ex.kind === 'timer' ? null : Number(ex.min),
+      maxReps: ex.kind === 'timer' ? null : Number(ex.max),
+      increment: ex.kind === 'timer' ? null : Number(ex.increment),
       seconds: ex.kind === 'timer' ? target.values.slice() : null,
       weight: ex.kind.startsWith('db') ? Number(target.weight) : null,
       sideWeight: ex.kind === 'bar' ? Number(target.sideWeight) : null,
@@ -542,7 +544,6 @@
   function openInsights() {
     closeSheet();
     insightsExerciseId = currentExercise().id;
-    insightsMetric = 'load';
     const options = exerciseSelectOptions();
     els.insightsExerciseSelect.innerHTML = options;
     els.pastEntryExercise.innerHTML = options;
@@ -585,16 +586,26 @@
     return aDay.localeCompare(bDay) || Date.parse(a.timestamp) - Date.parse(b.timestamp);
   }
 
-  function chartValue(record, metric) {
-    if (metric === 'time') return Array.isArray(record.seconds) ? record.seconds.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
-    if (metric === 'reps') return Array.isArray(record.reps) ? record.reps.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
+  function chartValue(record) {
+    if (record.kind === 'timer') return Array.isArray(record.seconds) ? record.seconds.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
     if (record.kind === 'bar') return record.totalWeight == null ? NaN : Number(record.totalWeight);
     return record.weight == null ? NaN : Number(record.weight);
   }
 
-  function metricUnit(ex, metric) {
-    if (metric === 'time') return 'sec';
-    if (metric === 'reps') return 'reps';
+  function chartPosition(record, ex, weight) {
+    if (ex.kind === 'timer' || !Array.isArray(record.reps) || !record.reps.length) return weight;
+    const min = Number(record.minReps ?? ex.min);
+    const max = Number(record.maxReps ?? ex.max);
+    const increment = Number(record.increment ?? ex.increment);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(increment) || max <= min || increment <= 0) return weight;
+    const total = record.reps.reduce((sum, rep) => sum + Number(rep), 0);
+    if (!Number.isFinite(total)) return weight;
+    const progress = clamp((total / record.reps.length - min) / (max - min), 0, 1);
+    return weight + progress * increment * .95;
+  }
+
+  function metricUnit(ex) {
+    if (ex.kind === 'timer') return 'sec';
     return ex.kind === 'bar' ? 'lb total' : ex.kind === 'db' ? 'lb each' : 'lb';
   }
 
@@ -608,23 +619,18 @@
     const ex = state.exercises[insightsExerciseId];
     if (!ex) return;
     const timed = ex.kind === 'timer';
-    if (timed) insightsMetric = 'time';
-    else if (insightsMetric === 'time') insightsMetric = 'load';
     els.insightsExerciseSelect.value = ex.id;
-    els.insightsMetrics.hidden = timed;
-    els.insightsMetrics.querySelectorAll('button').forEach(button => {
-      const active = button.dataset.metric === insightsMetric;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', String(active));
-    });
-    const unit = metricUnit(ex, insightsMetric);
-    els.insightsMetricLabel.textContent = timed ? 'TOTAL TIME' : insightsMetric === 'reps' ? 'TOTAL REPS' : ex.kind === 'bar' ? 'TOTAL WEIGHT' : 'DUMBBELL WEIGHT';
+    const unit = metricUnit(ex);
+    els.insightsMetricLabel.textContent = timed ? 'TOTAL TIME' : ex.kind === 'bar' ? 'TOTAL WEIGHT' : 'DUMBBELL WEIGHT';
     const records = exerciseRecords(ex.id);
-    const points = records.map(record => ({ record, value: chartValue(record, insightsMetric) }))
+    const points = records.map(record => {
+      const value = chartValue(record);
+      return { record, value, position: chartPosition(record, ex, value) };
+    })
       .filter(point => Number.isFinite(point.value) && point.value >= 0);
     els.insightsChart.classList.toggle('is-empty', !points.length);
     els.insightsCount.textContent = String(records.length);
-    els.insightsChartNote.textContent = `Each point is a logged workout. Skipped days are not plotted.`;
+    els.insightsChartNote.textContent = timed ? 'Each point is a logged workout.' : 'More reps move the line toward the next weight.';
     if (!points.length) {
       els.insightsLatestValue.textContent = '—';
       els.insightsChange.textContent = 'No results yet';
@@ -639,11 +645,15 @@
       const delta = last.value - first.value;
       els.insightsLatestValue.textContent = `${formatNumber(last.value)} ${unit}`;
       els.insightsBest.textContent = `${formatNumber(best)} ${unit}`;
-      els.insightsChange.textContent = points.length === 1 ? 'First result' : delta === 0 ? 'No change yet' : `${delta > 0 ? '+' : '−'}${formatNumber(Math.abs(delta))} ${unit}`;
-      els.insightsChange.classList.toggle('down', delta < 0);
+      const positionChange = last.position - first.position;
+      els.insightsChange.textContent = points.length === 1 ? 'First result'
+        : delta !== 0 ? `${delta > 0 ? '+' : '−'}${formatNumber(Math.abs(delta))} ${unit}`
+        : timed || Math.abs(positionChange) < .001 ? 'No change yet'
+        : positionChange > 0 ? 'Moving up' : 'Moving down';
+      els.insightsChange.classList.toggle('down', positionChange < -.001);
       els.insightsFirstDate.textContent = shortDate(first.record);
       els.insightsLastDate.textContent = points.length > 1 ? shortDate(last.record) : '';
-      els.insightsChart.innerHTML = chartSvg(points, unit);
+      els.insightsChart.innerHTML = chartSvg(points, ex, unit);
     }
     els.insightsResultList.innerHTML = records.length ? records.slice().reverse().map(record => {
       const sets = record.kind === 'timer' ? (record.seconds || []).map(value => `${value}s`).join(' / ') : (record.reps || []).join(' / ');
@@ -654,21 +664,40 @@
     els.insightsResultList.querySelectorAll('[data-edit-past]').forEach(button => button.addEventListener('click', () => openPastEntry(button.dataset.editPast)));
   }
 
-  function chartSvg(points, unit) {
-    const values = points.map(point => point.value);
+  function chartSvg(points, ex, unit) {
+    const values = points.map(point => point.position);
     const low = Math.min(...values), high = Math.max(...values);
-    const padding = high === low ? Math.max(1, high * .05) : Math.max(1, (high - low) * .18);
-    const min = Math.max(0, low - padding), max = high + padding;
+    const weightChart = ex.kind !== 'timer';
+    let min, max, ticks;
+    if (weightChart) {
+      const increment = Number(ex.increment) > 0 ? Number(ex.increment) : 5;
+      let step = increment;
+      for (let magnitude = 1; magnitude < 1000000; magnitude *= 10) {
+        for (const factor of [1, 2, 5]) {
+          step = increment * magnitude * factor;
+          if (Math.ceil(high / step) - Math.floor(low / step) <= 3) break;
+        }
+        if (Math.ceil(high / step) - Math.floor(low / step) <= 3) break;
+      }
+      min = Math.max(0, Math.floor(low / step) * step);
+      max = Math.ceil(high / step) * step;
+      if (max <= min) max = min + step;
+      ticks = Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => min + index * step);
+    } else {
+      const padding = high === low ? Math.max(1, high * .05) : Math.max(1, (high - low) * .18);
+      min = Math.max(0, low - padding);
+      max = high + padding;
+      ticks = [min, (min + max) / 2, max];
+    }
     const x = index => points.length === 1 ? 176 : 40 + (index * 272 / (points.length - 1));
     const y = value => 148 - ((value - min) / (max - min)) * 120;
-    const path = points.map((point, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(' ');
+    const path = points.map((point, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(point.position).toFixed(1)}`).join(' ');
     const fill = points.length > 1 ? `<path class="chart-fill" d="${path} L${x(points.length - 1).toFixed(1)},148 L${x(0).toFixed(1)},148 Z"/>` : '';
-    const grids = [0, .5, 1].map(fraction => {
-      const yy = 148 - fraction * 120;
-      const value = min + fraction * (max - min);
-      return `<line class="chart-grid" x1="40" x2="312" y1="${yy}" y2="${yy}"/><text class="chart-axis-value" x="0" y="${yy + 3}">${formatNumber(Math.round(value))}</text>`;
+    const grids = ticks.map(value => {
+      const yy = y(value);
+      return `<line class="chart-grid" x1="40" x2="312" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"/><text class="chart-axis-value" x="0" y="${(yy + 3).toFixed(1)}">${formatNumber(weightChart ? value : Math.round(value))}</text>`;
     }).join('');
-    const dots = points.map((point, index) => `<circle class="chart-point${index === points.length - 1 ? ' chart-point-last' : ''}" cx="${x(index).toFixed(1)}" cy="${y(point.value).toFixed(1)}" r="${index === points.length - 1 ? 5 : 3.5}"><title>${escapeHtml(shortDate(point.record))}: ${formatNumber(point.value)} ${escapeHtml(unit)}</title></circle>`).join('');
+    const dots = points.map((point, index) => `<circle class="chart-point${index === points.length - 1 ? ' chart-point-last' : ''}" cx="${x(index).toFixed(1)}" cy="${y(point.position).toFixed(1)}" r="${index === points.length - 1 ? 5 : 3.5}"><title>${escapeHtml(shortDate(point.record))}: ${formatNumber(point.value)} ${escapeHtml(unit)}</title></circle>`).join('');
     return `<svg viewBox="0 0 320 180" role="img" aria-label="${escapeHtml(unit)} across ${points.length} logged workouts">${grids}${fill}<path class="chart-line" d="${path}"/>${dots}</svg>`;
   }
 
@@ -879,6 +908,9 @@
       targetValues: previousRecord?.targetValues || values.slice(),
       previousText: previousRecord?.previousText || '',
       reps: timed ? null : values.slice(),
+      minReps: timed ? null : Number(previousRecord?.minReps ?? ex.min),
+      maxReps: timed ? null : Number(previousRecord?.maxReps ?? ex.max),
+      increment: timed ? null : Number(previousRecord?.increment ?? ex.increment),
       seconds: timed ? values.slice() : null,
       weight: ex.kind.startsWith('db') ? load : null,
       sideWeight: ex.kind === 'bar' ? (load - barWeight(ex)) / 2 : null,
@@ -1037,7 +1069,6 @@
   document.querySelectorAll('[data-insights-view]').forEach(button => button.addEventListener('click', () => setInsightsView(button.dataset.insightsView)));
   document.querySelectorAll('[data-consistency-range]').forEach(button => button.addEventListener('click', () => { consistencyRange = button.dataset.consistencyRange; renderConsistency(); }));
   els.insightsExerciseSelect.addEventListener('change', () => { insightsExerciseId = els.insightsExerciseSelect.value; closePastEntry(); renderInsights(); });
-  els.insightsMetrics.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { insightsMetric = button.dataset.metric; renderInsights(); }));
   els.insightsChart.addEventListener('click', event => { if (event.target.closest('[data-add-past]')) openPastEntry(); });
   els.addPastResultButton.addEventListener('click', () => openPastEntry());
   els.pastEntryExercise.addEventListener('change', () => renderPastEntryFields());
