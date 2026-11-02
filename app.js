@@ -183,7 +183,10 @@
 
   function nextPrescription(ex) {
     if (ex.kind === 'timer') {
-      return { values: (ex.last || ex.seconds || [60,60,60]).slice(), advanced: false };
+      const values = (ex.last || ex.seconds || [60,60,60]).map(Number);
+      const shortest = Math.min(...values);
+      values[values.indexOf(shortest)] += 5;
+      return { values, advanced: false };
     }
     const reps = (ex.last || [ex.min, ex.min, ex.min]).map(Number);
     const maxTotal = ex.max * 3;
@@ -233,6 +236,13 @@
     const weight = draft?.weight ?? calculated.weight ?? ex.weight;
     const sideWeight = draft?.sideWeight ?? calculated.sideWeight ?? ex.sideWeight;
     return { ...calculated, reps, weight, sideWeight };
+  }
+
+  function plannedValues(ex, saved = savedRecordFor(ex)) {
+    if (Array.isArray(saved?.targetValues)) return saved.targetValues;
+    if (Array.isArray(state.drafts[ex.id]?.targetValues)) return state.drafts[ex.id].targetValues;
+    const prescription = nextPrescription(ex);
+    return ex.kind === 'timer' ? prescription.values : prescription.reps;
   }
 
   function render() {
@@ -285,7 +295,7 @@
     }
 
     const values = ex.kind === 'timer' ? target.values : target.reps;
-    const targetValues = saved?.targetValues || values;
+    const targetValues = plannedValues(ex, saved);
     els.targetLabel.textContent = targetValues.map(v => ex.kind === 'timer' ? `${v}s` : v).join(' / ');
     renderSetControls(ex, values);
     els.previousLine.textContent = saved?.previousText || previousText(ex);
@@ -337,15 +347,16 @@
   function adjustSet(index, delta) {
     const ex = currentExercise();
     const target = targetFor(ex);
+    const targetValues = plannedValues(ex).slice();
     const step = ex.kind === 'timer' ? 5 : 1;
     if (ex.kind === 'timer') {
       const values = target.values.slice();
       values[index] = Math.max(0, values[index] + delta * step);
-      state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), values };
+      state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), targetValues, values };
     } else {
       const reps = target.reps.slice();
       reps[index] = Math.max(0, reps[index] + delta);
-      state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), reps, weight: target.weight, sideWeight: target.sideWeight };
+      state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), targetValues, reps, weight: target.weight, sideWeight: target.sideWeight };
     }
     saveState();
     render();
@@ -376,7 +387,6 @@
       return;
     }
     const target = targetFor(ex);
-    const prescribed = nextPrescription(ex);
     const before = JSON.parse(JSON.stringify({
       workout: state.selectedWorkout,
       exerciseId: ex.id,
@@ -398,7 +408,7 @@
       exerciseId: ex.id,
       exerciseName: ex.name,
       kind: ex.kind,
-      targetValues: saved?.targetValues || (ex.kind === 'timer' ? prescribed.values : prescribed.reps).slice(),
+      targetValues: plannedValues(ex, saved).slice(),
       previousText: saved?.previousText || previousText(ex),
       reps: ex.kind === 'timer' ? null : target.reps.slice(),
       minReps: ex.kind === 'timer' ? null : Number(ex.min),
