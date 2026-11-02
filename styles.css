@@ -25,14 +25,14 @@ button { color: inherit; }
   min-height: 100svh;
   max-width: 540px;
   margin: 0 auto;
-  padding: calc(12px + var(--safe-top)) 14px calc(8px + var(--safe-bottom));
+  padding: calc(30px + var(--safe-top)) 14px calc(8px + var(--safe-bottom));
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   gap: 10px;
   overflow: hidden;
 }
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
-.topbar .eyebrow { color: #c3c3c9; }
+.topbar .eyebrow { color: #c3c3c9; font-size: 11px; letter-spacing: .09em; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 28px; line-height: 1; letter-spacing: -.04em; }
 h2 { font-size: clamp(21px, 6vw, 28px); line-height: 1.08; letter-spacing: -.035em; }
@@ -277,7 +277,7 @@ h3 { font-size: 26px; letter-spacing: -.035em; }
 }
 
 @media (max-height: 700px) {
-  .app-shell { gap: 7px; padding-top: calc(8px + var(--safe-top)); }
+  .app-shell { gap: 7px; padding-top: calc(24px + var(--safe-top)); }
   .topbar h1 { font-size: 24px; }
   .icon-button { width: 34px; height: 34px; }
   .segmented { height: 34px; }
