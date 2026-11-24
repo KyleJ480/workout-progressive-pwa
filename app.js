@@ -2,7 +2,7 @@
   'use strict';
 
   const STORAGE_KEY = 'progress-workout-v1';
-  const APP_VERSION = 2;
+  const APP_VERSION = 3;
   const DUMBBELL_LIMIT = 50;
   const DEFAULT_BACKFILL_UPDATES_TARGET = true;
   const PLATES = [45, 25, 10, 5, 2.5];
@@ -15,7 +15,7 @@
     singleArmRow: 'single-arm-dumbbell-row.png',
     pullover: 'dumbbell-lat-pullover.png',
     ezRow: 'reverse-grip-ez-bar-row.png',
-    chinups: 'chin-up.png',
+    chinups: 'pull-up.png',
     reverseFly: 'reverse-fly.png',
     ezShrug: 'ez-bar-barbell-shrug.png',
     curls: 'dumbbell-bicep-curl.png',
@@ -45,7 +45,7 @@
       singleArmRow: { id:'singleArmRow', workout:'Pull', name:'Single-Arm Dumbbell Row', kind:'db', weight:45, min:8, max:12, increment:5, last:[10,10,10] },
       pullover: { id:'pullover', workout:'Pull', name:'Dumbbell Lat Pullover', kind:'dbSingle', weight:45, min:8, max:12, increment:5, last:[10,10,9] },
       ezRow: { id:'ezRow', workout:'Pull', name:'Reverse-Grip EZ Bar Row', kind:'bar', barKind:'ez', sideWeight:37.5, min:8, max:10, increment:5, last:[10,10,10] },
-      chinups: { id:'chinups', workout:'Pull', name:'Chin-Ups', kind:'bodyweight', last:[3,3,3] },
+      chinups: { id:'chinups', workout:'Pull', name:'Pull-Ups', kind:'bodyweight', last:[3,3,3] },
       reverseFly: { id:'reverseFly', workout:'Pull', name:'Reverse Fly', kind:'db', weight:15, min:8, max:12, increment:5, last:[9,9,9], alternating:'pullAlt', variant:'fly' },
       ezShrug: { id:'ezShrug', workout:'Pull', name:'EZ Bar Shrug', kind:'bar', barKind:'ez', sideWeight:37.5, min:8, max:10, increment:5, last:[10,10,10], alternating:'pullAlt', variant:'shrug' },
       curls: { id:'curls', workout:'Pull', name:'Dumbbell Bicep Curl', kind:'db', weight:40, min:8, max:12, increment:5, last:[9,9,9] },
@@ -113,6 +113,14 @@
         exercises: { ...base.exercises, ...(parsed.exercises || {}) }
       };
       const pullSession = restored.activeSessions.Pull;
+      if (restored.exercises.chinups) restored.exercises.chinups.name = 'Pull-Ups';
+      restored.history.forEach(record => {
+        if (record.exerciseId === 'chinups') record.exerciseName = 'Pull-Ups';
+      });
+      if (restored.undoRecord?.exerciseId === 'chinups') {
+        if (restored.undoRecord.ex) restored.undoRecord.ex.name = 'Pull-Ups';
+        if (restored.undoRecord.previousRecord) restored.undoRecord.previousRecord.exerciseName = 'Pull-Ups';
+      }
       if (pullSession && !pullSession.finishedAt && Array.isArray(pullSession.ids)) {
         const oldSlot = pullSession.ids.findIndex(id => id === 'reverseFly' || id === 'ezShrug');
         const oldId = pullSession.ids[oldSlot];
@@ -310,7 +318,7 @@
       els.loadSub.textContent = 'one dumbbell total';
     } else if (ex.kind === 'bodyweight') {
       els.loadMain.textContent = 'Bodyweight';
-      els.loadSub.textContent = 'underhand grip';
+      els.loadSub.textContent = 'overhand grip';
     } else if (ex.id === 'ski') {
       els.loadMain.textContent = `Setting ${ex.setting}`;
       els.loadSub.textContent = `Target ≥ ${ex.pace} cal/hr`;

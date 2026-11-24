@@ -9,7 +9,7 @@ A small, dependency-free progressive-overload PWA designed for iPhone.
 - Most barbell / EZ-bar movements use 8–10 and add 5 lb **total** after 3×10.
 - Romanian deadlifts use 6–8 and add 5 lb total after 3×8.
 - Bar exercises show total weight plus the plates required on **each side**.
-- Chin-ups replace the reverse-fly / EZ-bar-shrug slot on Pull day, starting with three reps per set. Older fly and shrug results remain in history.
+- Pull-ups replace the reverse-fly / EZ-bar-shrug slot on Pull day, starting with three reps per set. Older fly and shrug results remain in history.
 - Ski machine and planks advance the shortest timed set by five seconds after each logged result.
 - Every rep change and every completed exercise is written to local storage immediately.
 - A workout progress bar tracks logged exercises, and completed exercises can be reviewed and updated without duplicating their history entries.
