@@ -2,7 +2,8 @@
   'use strict';
 
   const STORAGE_KEY = 'progress-workout-v1';
-  const APP_VERSION = 1;
+  const APP_VERSION = 2;
+  const DUMBBELL_LIMIT = 50;
   const DEFAULT_BACKFILL_UPDATES_TARGET = true;
   const PLATES = [45, 25, 10, 5, 2.5];
   const EXERCISE_IMAGES = {
@@ -14,6 +15,7 @@
     singleArmRow: 'single-arm-dumbbell-row.png',
     pullover: 'dumbbell-lat-pullover.png',
     ezRow: 'reverse-grip-ez-bar-row.png',
+    chinups: 'chin-up.png',
     reverseFly: 'reverse-fly.png',
     ezShrug: 'ez-bar-barbell-shrug.png',
     curls: 'dumbbell-bicep-curl.png',
@@ -43,6 +45,7 @@
       singleArmRow: { id:'singleArmRow', workout:'Pull', name:'Single-Arm Dumbbell Row', kind:'db', weight:45, min:8, max:12, increment:5, last:[10,10,10] },
       pullover: { id:'pullover', workout:'Pull', name:'Dumbbell Lat Pullover', kind:'dbSingle', weight:45, min:8, max:12, increment:5, last:[10,10,9] },
       ezRow: { id:'ezRow', workout:'Pull', name:'Reverse-Grip EZ Bar Row', kind:'bar', barKind:'ez', sideWeight:37.5, min:8, max:10, increment:5, last:[10,10,10] },
+      chinups: { id:'chinups', workout:'Pull', name:'Chin-Ups', kind:'bodyweight', last:[3,3,3] },
       reverseFly: { id:'reverseFly', workout:'Pull', name:'Reverse Fly', kind:'db', weight:15, min:8, max:12, increment:5, last:[9,9,9], alternating:'pullAlt', variant:'fly' },
       ezShrug: { id:'ezShrug', workout:'Pull', name:'EZ Bar Shrug', kind:'bar', barKind:'ez', sideWeight:37.5, min:8, max:10, increment:5, last:[10,10,10], alternating:'pullAlt', variant:'shrug' },
       curls: { id:'curls', workout:'Pull', name:'Dumbbell Bicep Curl', kind:'db', weight:40, min:8, max:12, increment:5, last:[9,9,9] },
@@ -96,9 +99,10 @@
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
       const base = defaultState();
-      return {
+      const restored = {
         ...base,
         ...parsed,
+        version: APP_VERSION,
         settings: { ...base.settings, ...(parsed.settings || {}) },
         currentIndices: { ...base.currentIndices, ...(parsed.currentIndices || {}) },
         sessionCounts: { ...base.sessionCounts, ...(parsed.sessionCounts || {}) },
@@ -108,6 +112,13 @@
         undoRecord: parsed.undoRecord?.exerciseId ? parsed.undoRecord : null,
         exercises: { ...base.exercises, ...(parsed.exercises || {}) }
       };
+      const pullSession = restored.activeSessions.Pull;
+      if (pullSession && !pullSession.finishedAt && Array.isArray(pullSession.ids)) {
+        const oldSlot = pullSession.ids.findIndex(id => id === 'reverseFly' || id === 'ezShrug');
+        const oldId = pullSession.ids[oldSlot];
+        if (oldSlot >= 0 && !pullSession.completed?.[oldId] && !restored.drafts[oldId]) pullSession.ids[oldSlot] = 'chinups';
+      }
+      return restored;
     } catch (e) {
       console.warn('Could not load saved data; using defaults.', e);
       return defaultState();
@@ -121,8 +132,7 @@
   function plannedWorkoutIds(workout) {
     if (workout === 'Push') return ['bench','ezOHP','inclineDB','shoulderFly','ski'];
     if (workout === 'Legs') return ['rdl','lunges','calf','planks'];
-    const alt = state.sessionCounts.Pull % 2 === 0 ? 'reverseFly' : 'ezShrug';
-    return ['singleArmRow','pullover','ezRow',alt,'curls'];
+    return ['singleArmRow','pullover','ezRow','chinups','curls'];
   }
 
   function getWorkoutIds(workout) {
@@ -183,12 +193,16 @@
 
   function nextPrescription(ex) {
     if (ex.kind === 'timer') {
-      const values = (ex.last || ex.seconds || [60,60,60]).map(Number);
-      const shortest = Math.min(...values);
-      values[values.indexOf(shortest)] += 5;
-      return { values, advanced: false };
+      return { values: advanceShortest(ex.last || ex.seconds || [60,60,60], 5), advanced: false };
     }
     const reps = (ex.last || [ex.min, ex.min, ex.min]).map(Number);
+    if (ex.kind === 'bodyweight') {
+      const starting = !ex.progressionRecordId && !state.history.some(record => record.exerciseId === ex.id);
+      return { reps: starting ? reps : advanceShortest(reps, 1), advanced: false };
+    }
+    if (ex.kind.startsWith('db') && Number(ex.weight) >= DUMBBELL_LIMIT) {
+      return { reps: advanceShortest(reps, 1), weight: DUMBBELL_LIMIT, advanced: false };
+    }
     const maxTotal = ex.max * 3;
     const actualTotal = reps.reduce((a,b) => a + b, 0);
     const hitTop = reps.every(r => r >= ex.max);
@@ -200,6 +214,12 @@
     }
     const desiredTotal = Math.min(maxTotal, Math.max(1, actualTotal + 1));
     return { reps: distributeReps(desiredTotal, ex.max), sideWeight: ex.sideWeight, weight: ex.weight, advanced: false };
+  }
+
+  function advanceShortest(values, amount) {
+    const next = values.map(Number);
+    next[next.indexOf(Math.min(...next))] += amount;
+    return next;
   }
 
   function distributeReps(total, cap) {
@@ -262,13 +282,15 @@
     els.progressSegments.setAttribute('aria-valuenow', String(completedCount));
     els.progressSegments.style.gridTemplateColumns = `repeat(${ids.length}, minmax(0, 1fr))`;
     els.progressSegments.innerHTML = ids.map((id, i) => `<span class="progress-segment${session.completed[id] ? ' done' : ''}${i === idx ? ' current' : ''}" aria-hidden="true"></span>`).join('');
-    els.newSessionButton.hidden = !session.finishedAt;
-    els.newSessionButton.setAttribute('aria-label', `Start next ${state.selectedWorkout} session`);
+    els.newSessionButton.hidden = false;
+    els.newSessionButton.textContent = `New ${state.selectedWorkout} day`;
+    els.newSessionButton.setAttribute('aria-label', `Start a new ${state.selectedWorkout} day`);
     els.exerciseCounter.textContent = `${idx + 1} OF ${ids.length}`;
     els.exerciseName.textContent = ex.name;
     els.exerciseImage.src = `./icons/exercises/${EXERCISE_IMAGES[ex.id]}`;
     els.exerciseImageButton.setAttribute('aria-label', `View ${ex.name} illustration`);
     fitExerciseTitle();
+    els.editExerciseButton.hidden = ex.kind === 'bodyweight';
     els.exerciseLoggedBadge.hidden = !saved;
     els.exerciseLoggedBadge.textContent = edited ? '✓ LOGGED · EDITING' : '✓ LOGGED';
     document.querySelector('.exercise-card').classList.toggle('is-logged', !!saved);
@@ -286,6 +308,9 @@
     } else if (ex.kind === 'dbSingle') {
       els.loadMain.textContent = `${formatNumber(target.weight)} lb dumbbell`;
       els.loadSub.textContent = 'one dumbbell total';
+    } else if (ex.kind === 'bodyweight') {
+      els.loadMain.textContent = 'Bodyweight';
+      els.loadSub.textContent = 'underhand grip';
     } else if (ex.id === 'ski') {
       els.loadMain.textContent = `Setting ${ex.setting}`;
       els.loadSub.textContent = `Target ≥ ${ex.pace} cal/hr`;
@@ -367,6 +392,9 @@
     if (ex.kind === 'bar') return `Previous: ${formatNumber(totalWeight(ex, ex.sideWeight))} lb · ${last}`;
     if (ex.kind === 'db') return `Previous: ${formatNumber(ex.weight)} lb each · ${last}`;
     if (ex.kind === 'dbSingle') return `Previous: ${formatNumber(ex.weight)} lb · ${last}`;
+    if (ex.kind === 'bodyweight') return ex.progressionRecordId
+      ? `Previous: ${last} reps · bodyweight`
+      : `Starting goal: ${last} reps · bodyweight`;
     if (ex.id === 'ski') return `Previous: ${last}s · setting ${ex.setting}`;
     return `Previous: ${last}s`;
   }
@@ -411,9 +439,9 @@
       targetValues: plannedValues(ex, saved).slice(),
       previousText: saved?.previousText || previousText(ex),
       reps: ex.kind === 'timer' ? null : target.reps.slice(),
-      minReps: ex.kind === 'timer' ? null : Number(ex.min),
-      maxReps: ex.kind === 'timer' ? null : Number(ex.max),
-      increment: ex.kind === 'timer' ? null : Number(ex.increment),
+      minReps: ex.kind === 'timer' || ex.kind === 'bodyweight' ? null : Number(ex.min),
+      maxReps: ex.kind === 'timer' || ex.kind === 'bodyweight' ? null : Number(ex.max),
+      increment: ex.kind === 'timer' || ex.kind === 'bodyweight' ? null : Number(ex.increment),
       seconds: ex.kind === 'timer' ? target.values.slice() : null,
       weight: ex.kind.startsWith('db') ? Number(target.weight) : null,
       sideWeight: ex.kind === 'bar' ? Number(target.sideWeight) : null,
@@ -433,7 +461,7 @@
     } else {
       ex.last = target.reps.slice();
       if (ex.kind === 'bar') ex.sideWeight = Number(target.sideWeight);
-      else ex.weight = Number(target.weight);
+      else if (ex.kind !== 'bodyweight') ex.weight = Number(target.weight);
     }
     ex.progressionRecordId = record.id;
     delete state.drafts[ex.id];
@@ -473,7 +501,7 @@
     const session = ensureSession(state.selectedWorkout);
     els.celebrationTitle.textContent = `${state.selectedWorkout} complete!`;
     els.celebrationDetail.textContent = `${session.ids.length} exercises logged. You can still review and edit them.`;
-    els.nextSessionButton.textContent = `Start next ${state.selectedWorkout} session`;
+    els.nextSessionButton.textContent = `Start a new ${state.selectedWorkout} day`;
     els.completionOverlay.hidden = false;
     els.reviewWorkoutButton.focus();
   }
@@ -485,21 +513,18 @@
   function startNextSession() {
     const workout = state.selectedWorkout;
     const session = ensureSession(workout);
-    if (!session.finishedAt) return;
-    const editedId = session.ids.find(id => !!state.drafts[id]);
-    if (editedId) {
-      state.currentIndices[workout] = session.ids.indexOf(editedId);
-      closeCelebration();
-      render();
-      showToast('Update your edited exercise first');
-      return;
+    const draftIds = session.ids.filter(id => !!state.drafts[id]);
+    if (draftIds.length && !window.confirm('Start a new day? Unfinished set edits will be cleared. Logged exercises stay in your history.')) return;
+    draftIds.forEach(id => { delete state.drafts[id]; });
+    if (!session.finishedAt && Object.keys(session.completed).length) {
+      state.sessionCounts[workout] = (state.sessionCounts[workout] || 0) + 1;
     }
     state.activeSessions[workout] = null;
     state.currentIndices[workout] = 0;
     state.undoRecord = null;
     closeCelebration();
     render();
-    showToast('Next session ready');
+    showToast(`New ${workout} day ready`);
   }
 
   function moveExercise(delta) {
@@ -537,6 +562,7 @@
       if (r.kind === 'bar') load = `${formatNumber(r.totalWeight)} lb`;
       else if (r.kind === 'db') load = `${formatNumber(r.weight)} ea`;
       else if (r.kind === 'dbSingle') load = `${formatNumber(r.weight)} lb`;
+      else if (r.kind === 'bodyweight') load = 'BW';
       else if (r.setting) load = `S${r.setting}`;
       return `<div class="history-item"><div><strong>${escapeHtml(r.exerciseName)}</strong><div class="history-sub">${date} · ${escapeHtml(r.workout)}</div></div><div class="history-value">${escapeHtml(load)}<div class="history-sub">${escapeHtml(sets)}</div></div></div>`;
     }).join('');
@@ -598,24 +624,27 @@
 
   function chartValue(record) {
     if (record.kind === 'timer') return Array.isArray(record.seconds) ? record.seconds.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
+    if (record.kind === 'bodyweight') return Array.isArray(record.reps) ? record.reps.reduce((sum, value) => sum + Number(value || 0), 0) : NaN;
     if (record.kind === 'bar') return record.totalWeight == null ? NaN : Number(record.totalWeight);
     return record.weight == null ? NaN : Number(record.weight);
   }
 
   function chartPosition(record, ex, weight) {
-    if (ex.kind === 'timer' || !Array.isArray(record.reps) || !record.reps.length) return weight;
+    if (ex.kind === 'timer' || ex.kind === 'bodyweight' || !Array.isArray(record.reps) || !record.reps.length) return weight;
     const min = Number(record.minReps ?? ex.min);
     const max = Number(record.maxReps ?? ex.max);
     const increment = Number(record.increment ?? ex.increment);
     if (!Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(increment) || max <= min || increment <= 0) return weight;
     const total = record.reps.reduce((sum, rep) => sum + Number(rep), 0);
     if (!Number.isFinite(total)) return weight;
-    const progress = clamp((total / record.reps.length - min) / (max - min), 0, 1);
-    return weight + progress * increment * .95;
+    const cappedDumbbell = ex.kind.startsWith('db') && weight === DUMBBELL_LIMIT;
+    const progress = Math.max(0, (total / record.reps.length - min) / (max - min));
+    return weight + (cappedDumbbell ? progress : Math.min(progress, 1)) * increment * .95;
   }
 
   function metricUnit(ex) {
     if (ex.kind === 'timer') return 'sec';
+    if (ex.kind === 'bodyweight') return 'reps';
     return ex.kind === 'bar' ? 'lb total' : ex.kind === 'db' ? 'lb each' : 'lb';
   }
 
@@ -629,9 +658,10 @@
     const ex = state.exercises[insightsExerciseId];
     if (!ex) return;
     const timed = ex.kind === 'timer';
+    const cappedDumbbell = ex.kind.startsWith('db') && Number(ex.weight) >= DUMBBELL_LIMIT;
     els.insightsExerciseSelect.value = ex.id;
     const unit = metricUnit(ex);
-    els.insightsMetricLabel.textContent = timed ? 'TOTAL TIME' : ex.kind === 'bar' ? 'TOTAL WEIGHT' : 'DUMBBELL WEIGHT';
+    els.insightsMetricLabel.textContent = timed ? 'TOTAL TIME' : ex.kind === 'bodyweight' ? 'TOTAL REPS' : ex.kind === 'bar' ? 'TOTAL WEIGHT' : 'DUMBBELL WEIGHT';
     const records = exerciseRecords(ex.id);
     const points = records.map(record => {
       const value = chartValue(record);
@@ -640,7 +670,7 @@
       .filter(point => Number.isFinite(point.value) && point.value >= 0);
     els.insightsChart.classList.toggle('is-empty', !points.length);
     els.insightsCount.textContent = String(records.length);
-    els.insightsChartNote.textContent = timed ? 'Each point is a logged workout.' : 'More reps move the line toward the next weight.';
+    els.insightsChartNote.textContent = timed ? 'Each point is a logged workout.' : ex.kind === 'bodyweight' ? 'Each point is the total of all three sets.' : cappedDumbbell ? 'At 50 lb, more reps keep the line rising.' : 'More reps move the line toward the next weight.';
     if (!points.length) {
       els.insightsLatestValue.textContent = '—';
       els.insightsChange.textContent = 'No results yet';
@@ -667,7 +697,7 @@
     }
     els.insightsResultList.innerHTML = records.length ? records.slice().reverse().map(record => {
       const sets = record.kind === 'timer' ? (record.seconds || []).map(value => `${value}s`).join(' / ') : (record.reps || []).join(' / ');
-      const load = record.kind === 'bar' ? `${formatNumber(record.totalWeight)} lb total` : record.kind === 'db' ? `${formatNumber(record.weight)} lb each` : record.kind === 'dbSingle' ? `${formatNumber(record.weight)} lb` : record.setting != null ? `Setting ${record.setting}` : '';
+      const load = record.kind === 'bar' ? `${formatNumber(record.totalWeight)} lb total` : record.kind === 'db' ? `${formatNumber(record.weight)} lb each` : record.kind === 'dbSingle' ? `${formatNumber(record.weight)} lb` : record.kind === 'bodyweight' ? 'Bodyweight' : record.setting != null ? `Setting ${record.setting}` : '';
       const detail = [load, sets].filter(Boolean).join(' · ');
       return `<div class="insights-result"><div><strong>${escapeHtml(shortDate(record))}</strong><span>${escapeHtml(detail)}</span></div>${record.backfilled ? `<button type="button" data-edit-past="${escapeHtml(record.id)}">Edit</button>` : ''}</div>`;
     }).join('') : '<div class="empty-state">No results for this exercise yet.</div>';
@@ -677,19 +707,21 @@
   function chartSvg(points, ex, unit) {
     const values = points.map(point => point.position);
     const low = Math.min(...values), high = Math.max(...values);
-    const weightChart = ex.kind !== 'timer';
+    const weightChart = ex.kind !== 'timer' && ex.kind !== 'bodyweight';
+    const cappedDumbbell = ex.kind.startsWith('db') && points.some(point => point.value === DUMBBELL_LIMIT) && points.every(point => point.value <= DUMBBELL_LIMIT);
     let min, max, ticks;
     if (weightChart) {
       const increment = Number(ex.increment) > 0 ? Number(ex.increment) : 5;
+      const axisLow = cappedDumbbell ? Math.min(low, DUMBBELL_LIMIT) : low;
       let step = increment;
       for (let magnitude = 1; magnitude < 1000000; magnitude *= 10) {
         for (const factor of [1, 2, 5]) {
           step = increment * magnitude * factor;
-          if (Math.ceil(high / step) - Math.floor(low / step) <= 3) break;
+          if (Math.ceil(high / step) - Math.floor(axisLow / step) <= 3) break;
         }
-        if (Math.ceil(high / step) - Math.floor(low / step) <= 3) break;
+        if (Math.ceil(high / step) - Math.floor(axisLow / step) <= 3) break;
       }
-      min = Math.max(0, Math.floor(low / step) * step);
+      min = Math.max(0, Math.floor(axisLow / step) * step);
       max = Math.ceil(high / step) * step;
       if (max <= min) max = min + step;
       ticks = Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => min + index * step);
@@ -705,7 +737,8 @@
     const fill = points.length > 1 ? `<path class="chart-fill" d="${path} L${x(points.length - 1).toFixed(1)},148 L${x(0).toFixed(1)},148 Z"/>` : '';
     const grids = ticks.map(value => {
       const yy = y(value);
-      return `<line class="chart-grid" x1="40" x2="312" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"/><text class="chart-axis-value" x="0" y="${(yy + 3).toFixed(1)}">${formatNumber(weightChart ? value : Math.round(value))}</text>`;
+      const label = cappedDumbbell && value > DUMBBELL_LIMIT ? '' : `<text class="chart-axis-value" x="0" y="${(yy + 3).toFixed(1)}">${formatNumber(weightChart ? value : Math.round(value))}</text>`;
+      return `<line class="chart-grid" x1="40" x2="312" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"/>${label}`;
     }).join('');
     const dots = points.map((point, index) => `<circle class="chart-point${index === points.length - 1 ? ' chart-point-last' : ''}" cx="${x(index).toFixed(1)}" cy="${y(point.position).toFixed(1)}" r="${index === points.length - 1 ? 5 : 3.5}"><title>${escapeHtml(shortDate(point.record))}: ${formatNumber(point.value)} ${escapeHtml(unit)}</title></circle>`).join('');
     return `<svg viewBox="0 0 320 180" role="img" aria-label="${escapeHtml(unit)} across ${points.length} logged workouts">${grids}${fill}<path class="chart-line" d="${path}"/>${dots}</svg>`;
@@ -846,11 +879,12 @@
     const ex = state.exercises[els.pastEntryExercise.value];
     if (!ex) return;
     const timed = ex.kind === 'timer';
-    els.pastEntryLoadRow.hidden = timed;
-    els.pastEntryLoad.required = !timed;
+    const needsLoad = !timed && ex.kind !== 'bodyweight';
+    els.pastEntryLoadRow.hidden = !needsLoad;
+    els.pastEntryLoad.required = needsLoad;
     els.pastEntryLoadLabel.textContent = ex.kind === 'bar' ? 'Total weight, including the bar' : ex.kind === 'db' ? 'Weight of each dumbbell' : 'Dumbbell weight';
     els.pastEntryLoad.min = ex.kind === 'bar' ? String(barWeight(ex)) : '0';
-    els.pastEntryLoad.value = !record || timed ? '' : String(ex.kind === 'bar' ? record.totalWeight : record.weight);
+    els.pastEntryLoad.value = !record || !needsLoad ? '' : String(ex.kind === 'bar' ? record.totalWeight : record.weight);
     els.pastEntrySets.querySelectorAll('label').forEach((label, index) => { label.textContent = `Set ${index + 1} ${timed ? '(seconds)' : '(reps)'}`; });
     const values = record ? (timed ? record.seconds : record.reps) : null;
     [els.pastEntrySet1, els.pastEntrySet2, els.pastEntrySet3].forEach((input, index) => { input.value = values?.[index] ?? ''; });
@@ -870,7 +904,7 @@
     ex.last = values.map(Number);
     if (ex.kind === 'timer') ex.seconds = ex.last.slice();
     else if (ex.kind === 'bar') ex.sideWeight = Number(record.sideWeight);
-    else ex.weight = Number(record.weight);
+    else if (ex.kind !== 'bodyweight') ex.weight = Number(record.weight);
     ex.progressionRecordId = record.id;
   }
 
@@ -887,7 +921,7 @@
       ex.last = snapshot.last?.slice();
       if (ex.kind === 'timer') ex.seconds = snapshot.seconds?.slice();
       else if (ex.kind === 'bar') ex.sideWeight = snapshot.sideWeight;
-      else ex.weight = snapshot.weight;
+      else if (ex.kind !== 'bodyweight') ex.weight = snapshot.weight;
       ex.progressionRecordId = snapshot.progressionRecordId;
     } else if (latest?.id === changedId && latestOverall?.id === changedId) applyProgressionRecord(ex, latest);
   }
@@ -902,8 +936,9 @@
     const values = setInputs.map(input => Number(input.value));
     if (setInputs.some(input => input.value === '') || values.some(value => !Number.isInteger(value) || value < 0)) { showToast('Enter all three sets'); return; }
     const timed = ex.kind === 'timer';
-    const load = timed ? null : Number(els.pastEntryLoad.value);
-    if (!timed && (!Number.isFinite(load) || load <= 0 || (ex.kind === 'bar' && load < barWeight(ex)))) { showToast('Check the weight'); return; }
+    const needsLoad = !timed && ex.kind !== 'bodyweight';
+    const load = needsLoad ? Number(els.pastEntryLoad.value) : null;
+    if (needsLoad && (!Number.isFinite(load) || load <= 0 || (ex.kind === 'bar' && load < barWeight(ex)))) { showToast('Check the weight'); return; }
     const existingIndex = editingPastRecordId ? state.history.findIndex(record => record.id === editingPastRecordId && record.backfilled) : -1;
     const previousRecord = existingIndex >= 0 ? state.history[existingIndex] : null;
     const record = {
@@ -918,9 +953,9 @@
       targetValues: previousRecord?.targetValues || values.slice(),
       previousText: previousRecord?.previousText || '',
       reps: timed ? null : values.slice(),
-      minReps: timed ? null : Number(previousRecord?.minReps ?? ex.min),
-      maxReps: timed ? null : Number(previousRecord?.maxReps ?? ex.max),
-      increment: timed ? null : Number(previousRecord?.increment ?? ex.increment),
+      minReps: needsLoad ? Number(previousRecord?.minReps ?? ex.min) : null,
+      maxReps: needsLoad ? Number(previousRecord?.maxReps ?? ex.max) : null,
+      increment: needsLoad ? Number(previousRecord?.increment ?? ex.increment) : null,
       seconds: timed ? values.slice() : null,
       weight: ex.kind.startsWith('db') ? load : null,
       sideWeight: ex.kind === 'bar' ? (load - barWeight(ex)) / 2 : null,
@@ -971,8 +1006,8 @@
       els.weightAdjustFields.innerHTML = `<div class="adjust-row"><label class="field-label" for="adjustWeightInput">Total weight for this workout</label><div class="field-with-unit"><input id="adjustWeightInput" type="number" min="0" step="5" inputmode="decimal" value="${formatNumber(totalWeight(ex,target.sideWeight))}"><span>lb</span></div></div>`;
       els.adjustHint.textContent = `The app converts total weight into plates automatically. Current bar weight: ${formatNumber(barWeight(ex))} lb.`;
     } else if (ex.kind === 'db' || ex.kind === 'dbSingle') {
-      els.weightAdjustFields.innerHTML = `<div class="adjust-row"><label class="field-label" for="adjustWeightInput">Dumbbell weight</label><div class="field-with-unit"><input id="adjustWeightInput" type="number" min="0" step="5" inputmode="decimal" value="${formatNumber(target.weight)}"><span>lb</span></div></div>`;
-      els.adjustHint.textContent = ex.kind === 'db' ? 'Enter the weight of one dumbbell.' : 'Enter the weight of the single dumbbell.';
+      els.weightAdjustFields.innerHTML = `<div class="adjust-row"><label class="field-label" for="adjustWeightInput">Dumbbell weight</label><div class="field-with-unit"><input id="adjustWeightInput" type="number" min="0" max="${DUMBBELL_LIMIT}" step="5" inputmode="decimal" value="${formatNumber(Math.min(target.weight, DUMBBELL_LIMIT))}"><span>lb</span></div></div>`;
+      els.adjustHint.textContent = `Your dumbbells stop at ${DUMBBELL_LIMIT} lb. Reps keep increasing after that.`;
     } else {
       els.adjustHint.textContent = 'Timed exercises are adjusted directly with the set controls.';
     }
@@ -996,7 +1031,7 @@
           const sideWeight = Math.max(0, (w - barWeight(ex)) / 2);
           state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), reps: target.reps, sideWeight };
         } else {
-          state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), reps: target.reps, weight: w };
+          state.drafts[ex.id] = { ...(state.drafts[ex.id] || {}), reps: target.reps, weight: Math.min(w, DUMBBELL_LIMIT) };
         }
       }
     }

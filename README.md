@@ -5,18 +5,19 @@ A small, dependency-free progressive-overload PWA designed for iPhone.
 ## What it does
 
 - Push / Pull / Legs workouts with the supplied starting weights and reps.
-- Dumbbell movements use an 8–12 progression and add 5 lb **per dumbbell** after 3×12.
+- Dumbbell movements use an 8–12 progression and add 5 lb **per dumbbell** after 3×12, up to the available 50 lb dumbbells. At 50 lb, the next target keeps adding reps.
 - Most barbell / EZ-bar movements use 8–10 and add 5 lb **total** after 3×10.
 - Romanian deadlifts use 6–8 and add 5 lb total after 3×8.
 - Bar exercises show total weight plus the plates required on **each side**.
-- The reverse-fly / EZ-bar-shrug slot alternates each completed Pull session.
-- Ski machine and planks are manual time-based progressions.
+- Chin-ups replace the reverse-fly / EZ-bar-shrug slot on Pull day, starting with three reps per set. Older fly and shrug results remain in history.
+- Ski machine and planks advance the shortest timed set by five seconds after each logged result.
 - Every rep change and every completed exercise is written to local storage immediately.
 - A workout progress bar tracks logged exercises, and completed exercises can be reviewed and updated without duplicating their history entries.
 - Each exercise has an illustration beside its counter; tap it to view a larger reference image.
 - The chart icon opens a separate Progress view for weight, total reps, or timed-set progress. The line connects logged workouts; skipped days create no point.
 - Add or edit a past exercise result with its actual date. You can choose whether a latest backfilled result updates the next workout target.
 - The Progress view also shows training consistency for the last 30 days or 12 months against a six-days-per-week goal. Sundays are rest days and are excluded. One or more logged exercises counts as one training day; past entries count on their chosen date. The calculation starts with the first logged day within the selected period; adding an older result can move that start date back.
+- You can start a new Push, Pull, or Legs day at any time, even after a partial session. Logged exercises stay in history; unfinished set edits are cleared after confirmation.
 - Finishing the last exercise keeps the completed workout in view until you explicitly start the next session.
 - PWA/service worker support allows the app to run offline after the first successful load.
 - Export/import a JSON backup and export workout history as CSV.
